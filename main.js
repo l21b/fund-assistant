@@ -1334,6 +1334,8 @@ class FundNavRefreshPlugin extends Plugin {
       const histories = new Map();
       const failures = [];
       const warnings = [];
+      const updatedItems = [];
+      const unchangedItems = [];
       let updated = 0;
       let unchanged = 0;
       let organized = 0;
@@ -1356,16 +1358,22 @@ class FundNavRefreshPlugin extends Plugin {
           const propertiesChanged = fundPropertiesNeedNormalization(frontmatter);
           if (!dataChanged && !propertiesChanged) {
             unchanged += 1;
+            unchangedItems.push(`${file.basename}：净值已是最新`);
             continue;
           }
           await this.app.fileManager.processFrontMatter(file, (target) => {
             for (const [key, value] of Object.entries(changes)) target[key] = value;
             normalizeFundProperties(target);
           });
-          if (dataChanged) updated += 1;
+          if (dataChanged) {
+            updated += 1;
+            const executionText = prepared.executions.length ? `，补算 ${prepared.executions.length} 期定投` : "";
+            updatedItems.push(`${file.basename}：已更新至 ${prepared.latest.date}${executionText}`);
+          }
           else {
             organized += 1;
             unchanged += 1;
+            unchangedItems.push(`${file.basename}：净值已是最新，已整理属性`);
           }
           executionCount += prepared.executions.length;
         } catch (error) {
@@ -1374,12 +1382,29 @@ class FundNavRefreshPlugin extends Plugin {
       }
 
       if (updated > 0) await this.updateLogDate();
-      const dcaText = executionCount ? `，补算 ${executionCount} 期定投` : "";
-      const organizedText = organized ? `，整理 ${organized} 只属性` : "";
-      const warningText = warnings.length ? `，${warnings.length} 条配置警告` : "";
-      const summary = `基金数据：${updated} 只更新，${unchanged} 只已是最新${dcaText}${organizedText}，${failures.length} 只失败${warningText}`;
-      const details = [...failures, ...warnings];
-      new Notice(details.length ? `${summary}\n${details.join("\n")}` : summary, details.length ? 10000 : 4500);
+      const summary = `更新完成：成功 ${updated} · 未更新 ${unchanged} · 失败 ${failures.length}`;
+      const notice = new Notice(`${summary} · 点击查看详情`, 8000);
+      if (notice.noticeEl) {
+        notice.noticeEl.addClass("fund-refresh-summary-notice");
+        notice.noticeEl.setAttribute("role", "button");
+        notice.noticeEl.setAttribute("tabindex", "0");
+        const openDetails = () => new RefreshResultModal(this.app, {
+          summary,
+          updatedItems,
+          unchangedItems,
+          failures,
+          warnings,
+          executionCount,
+          organized,
+        }).open();
+        notice.noticeEl.addEventListener("click", openDetails);
+        notice.noticeEl.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDetails();
+          }
+        });
+      }
       if (failures.length) console.error("[基金助手]", failures);
       if (warnings.length) console.warn("[基金助手]", warnings);
     } finally {
@@ -1394,6 +1419,47 @@ class FundNavRefreshPlugin extends Plugin {
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
       frontmatter["更新日期"] = localDate;
     });
+  }
+}
+
+class RefreshResultModal extends Modal {
+  constructor(app, result) {
+    super(app);
+    this.result = result;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    const result = this.result;
+    contentEl.empty();
+    contentEl.addClass("fund-refresh-result-modal");
+    contentEl.createEl("h2", { text: "净值更新结果" });
+    contentEl.createEl("p", { cls: "fund-refresh-result-summary", text: result.summary });
+
+    const addSection = (title, items, emptyText) => {
+      const section = contentEl.createDiv({ cls: "fund-refresh-result-section" });
+      section.createEl("h3", { text: `${title} ${items.length}` });
+      if (!items.length) {
+        section.createEl("p", { cls: "fund-refresh-result-empty", text: emptyText });
+        return;
+      }
+      const list = section.createEl("ul");
+      for (const item of items) list.createEl("li", { text: item });
+    };
+
+    addSection("成功", result.updatedItems, "本次没有基金需要更新");
+    addSection("未更新", result.unchangedItems, "没有已是最新的基金");
+    addSection("失败", result.failures, "没有更新失败");
+    if (result.warnings.length) addSection("配置提醒", result.warnings, "");
+
+    const extras = [];
+    if (result.executionCount) extras.push(`补算 ${result.executionCount} 期定投`);
+    if (result.organized) extras.push(`整理 ${result.organized} 只基金属性`);
+    if (extras.length) contentEl.createEl("p", { cls: "fund-refresh-result-extra", text: extras.join(" · ") });
+  }
+
+  onClose() {
+    this.contentEl.empty();
   }
 }
 

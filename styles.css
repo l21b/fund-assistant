@@ -1170,3 +1170,36 @@
   }
 
 }
+.notice.fund-refresh-summary-notice {
+  cursor: pointer;
+}
+
+.fund-refresh-result-summary {
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.fund-refresh-result-section {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 0.8rem 0;
+}
+
+.fund-refresh-result-section h3 {
+  font-size: 0.95em;
+  margin: 0 0 0.55rem;
+}
+
+.fund-refresh-result-section ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.fund-refresh-result-section li + li {
+  margin-top: 0.35rem;
+}
+
+.fund-refresh-result-empty,
+.fund-refresh-result-extra {
+  color: var(--text-muted);
+  margin: 0;
+}
