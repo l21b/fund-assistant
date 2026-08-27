@@ -467,6 +467,8 @@ class FundNavRefreshPlugin extends Plugin {
     this.fundOverviewViews = new Set();
     this.gridOverviewViews = new Set();
     this.renderRefreshTimer = null;
+    this.sessionRefreshTimer = null;
+    this.sessionRefreshState = "idle";
 
     this.addCommand({
       id: "refresh-fund-nav",
@@ -533,6 +535,9 @@ class FundNavRefreshPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("modify", reloadGroupConfiguration));
     this.registerEvent(this.app.vault.on("create", reloadGroupConfiguration));
     this.registerEvent(this.app.vault.on("delete", reloadGroupConfiguration));
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      this.maybeRunSessionRefresh(file);
+    }));
     this.addSettingTab(new FundNavRefreshSettingTab(this.app, this));
 
     this.app.workspace.onLayoutReady(async () => {
@@ -542,18 +547,39 @@ class FundNavRefreshPlugin extends Plugin {
       new InvestmentWorkspaceSetupModal(this.app, this).open();
     });
 
-    if (this.settings.refreshOnStartup) {
-      this.app.workspace.onLayoutReady(() => {
-        if (this.isFundWorkspaceReady()) window.setTimeout(async () => {
-          await this.refreshAll(false);
-          await this.refreshGridStrategies(false);
-        }, 1200);
-      });
-    }
+    this.app.workspace.onLayoutReady(() => {
+      this.maybeRunSessionRefresh(this.app.workspace.getActiveFile());
+    });
   }
 
   onunload() {
     if (this.renderRefreshTimer !== null) window.clearTimeout(this.renderRefreshTimer);
+    if (this.sessionRefreshTimer !== null) window.clearTimeout(this.sessionRefreshTimer);
+  }
+
+  isInvestmentPage(file) {
+    return Boolean(file && (this.isFundFile(file) || file.path === OVERVIEW_FILE || file.path === GRID_OVERVIEW_FILE));
+  }
+
+  maybeRunSessionRefresh(file) {
+    if (!this.settings.refreshOnStartup || this.sessionRefreshState !== "idle"
+      || !this.isFundWorkspaceReady() || !this.isInvestmentPage(file)) return;
+    this.sessionRefreshState = "scheduled";
+    this.sessionRefreshTimer = window.setTimeout(async () => {
+      this.sessionRefreshTimer = null;
+      if (!this.settings.refreshOnStartup) {
+        this.sessionRefreshState = "idle";
+        return;
+      }
+      this.sessionRefreshState = "running";
+      try {
+        await this.refreshAll(false);
+        await this.refreshGridStrategies(false);
+      } finally {
+        this.sessionRefreshState = "complete";
+        this.scheduleRenderedRefresh();
+      }
+    }, 300);
   }
 
   scheduleRenderedRefresh() {
@@ -2391,10 +2417,11 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
         });
       });
     containerEl.createEl("h3", { text: "净值更新" });
-    new Setting(containerEl).setName("打开 Obsidian 时更新").setDesc("每次打开当前仓库后检查一次，不在后台定时运行。")
+    new Setting(containerEl).setName("首次打开投资页面时更新").setDesc("每次启动 Obsidian 后，首次打开投资总览、网格策略或基金页面时更新一次。")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.refreshOnStartup).onChange(async (value) => {
         this.plugin.settings.refreshOnStartup = value;
         await this.plugin.saveSettings();
+        if (value) this.plugin.maybeRunSessionRefresh(this.app.workspace.getActiveFile());
       }));
   }
 }
