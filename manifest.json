@@ -1,7 +1,7 @@
 {
   "id": "fund-assistant",
   "name": "基金助手",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.5.0",
   "description": "更新基金净值、补算定投持仓，并基于场内ETF行情计算网格中轴与建议间距。",
   "author": "Jiaxin",
