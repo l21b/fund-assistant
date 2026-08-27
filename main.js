@@ -2323,20 +2323,7 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
           await this.plugin.initializeInvestmentWorkspace(false);
           this.display();
         });
-      })
-      .addButton((button) => button
-        .setButtonText("打开投资总览")
-        .setDisabled(!this.app.vault.getFileByPath(OVERVIEW_FILE))
-        .onClick(async () => {
-          const file = this.app.vault.getFileByPath(OVERVIEW_FILE);
-          if (file) await this.app.workspace.getLeaf(false).openFile(file);
-        }));
-    new Setting(containerEl)
-      .setName("网格策略")
-      .setDesc("使用场内ETF行情计算执行中轴和建议中轴。")
-      .addButton((button) => button
-        .setButtonText("打开网格策略")
-        .onClick(() => this.plugin.openGridOverview()));
+      });
     containerEl.createEl("h3", { text: "净值更新" });
     new Setting(containerEl).setName("打开 Obsidian 时更新").setDesc("每次打开当前仓库后检查一次，不在后台定时运行。")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.refreshOnStartup).onChange(async (value) => {
