@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   setupPromptShown: false,
   gridHistory: {},
   selectedGridFundCode: "",
+  groupReturnMetric: "rate",
 };
 const FUND_PROPERTY_ORDER = [
   "基金编号",
@@ -460,6 +461,7 @@ class FundNavRefreshPlugin extends Plugin {
       this.settings.gridHistory = {};
     }
     this.settings.selectedGridFundCode = String(this.settings.selectedGridFundCode || "");
+    this.settings.groupReturnMetric = this.settings.groupReturnMetric === "profit" ? "profit" : "rate";
     this.groupConfig = await this.loadGroupConfiguration();
     this.refreshing = false;
     this.gridRefreshing = false;

@@ -8,6 +8,12 @@ const money = (value) => numberOf(value).toLocaleString("zh-CN", {
   currency: "CNY",
   maximumFractionDigits: 2,
 });
+const compactMoney = (value) => numberOf(value).toLocaleString("zh-CN", {
+  style: "currency",
+  currency: "CNY",
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
 const percent = (value) => `${numberOf(value).toFixed(2)}%`;
 const signedMoney = (value) => `${numberOf(value) > 0 ? "+" : ""}${money(value)}`;
 const signedPercent = (value) => `${numberOf(value) > 0 ? "+" : ""}${percent(value)}`;
@@ -262,32 +268,57 @@ function renderFundOverview(plugin, element, sourceFile) {
   }
 
   const returnSection = root.createDiv({ cls: "fund-overview-section" });
-  returnSection.createEl("h2", { text: "分组收益率" });
+  const returnHead = returnSection.createDiv({ cls: "fund-overview-section-head" });
+  returnHead.createEl("h2", { text: "分组回报" });
+  const returnSelect = returnHead.createEl("select", { attr: { "aria-label": "分组回报指标" } });
+  for (const [value, label] of [["rate", "收益率"], ["profit", "收益贡献"]]) {
+    const option = returnSelect.createEl("option", { text: label });
+    option.value = value;
+  }
+  returnSelect.value = plugin.settings.groupReturnMetric === "profit" ? "profit" : "rate";
   const returnChart = returnSection.createDiv({ cls: "fund-overview-return-chart" });
   const returnGroups = data.groups.filter((group) => group.funds.length);
-  const maxAbsoluteRate = Math.max(1, ...returnGroups.map((group) => Math.abs(numberOf(group.profitRate))));
-  const axis = returnChart.createDiv({ cls: "fund-overview-return-axis" });
-  axis.createSpan({ cls: "fund-overview-return-axis-spacer" });
-  const axisScale = axis.createDiv({ cls: "fund-overview-return-axis-scale" });
-  axisScale.createSpan({ text: `-${percent(maxAbsoluteRate)}` });
-  axisScale.createSpan({ text: "0%" });
-  axisScale.createSpan({ text: `+${percent(maxAbsoluteRate)}` });
-  axis.createSpan({ cls: "fund-overview-return-axis-spacer" });
-  for (const group of returnGroups) {
-    const rate = numberOf(group.profitRate);
-    const width = Math.abs(rate) / maxAbsoluteRate * 50;
-    const row = returnChart.createDiv({ cls: "fund-overview-return-row" });
-    const identity = row.createDiv({ cls: "fund-overview-return-name" });
-    identity.style.setProperty("--group-color", group.color);
-    identity.createSpan({ cls: "fund-overview-dot" });
-    identity.createSpan({ text: group.name });
-    const plot = row.createDiv({ cls: "fund-overview-return-plot" });
-    if (rate !== 0) {
-      const bar = plot.createDiv({ cls: `fund-overview-return-bar ${rate > 0 ? "positive-bar" : "negative-bar"}` });
-      bar.style.width = `${width}%`;
+  const renderGroupReturns = (metric) => {
+    returnChart.empty();
+    const showingProfit = metric === "profit";
+    const values = returnGroups.map((group) => numberOf(showingProfit ? group.profit : group.profitRate));
+    const maxAbsoluteValue = Math.max(1, ...values.map((value) => Math.abs(value)));
+    const formatAxisValue = (value) => showingProfit ? compactMoney(value) : percent(value);
+    const formatResultValue = (value) => showingProfit ? signedMoney(value) : signedPercent(value);
+    const axis = returnChart.createDiv({ cls: "fund-overview-return-axis" });
+    axis.createSpan({ cls: "fund-overview-return-axis-spacer" });
+    const axisScale = axis.createDiv({ cls: "fund-overview-return-axis-scale" });
+    axisScale.createSpan({ text: `-${formatAxisValue(maxAbsoluteValue)}` });
+    axisScale.createSpan({ text: showingProfit ? compactMoney(0) : "0%" });
+    axisScale.createSpan({ text: `+${formatAxisValue(maxAbsoluteValue)}` });
+    axis.createSpan({ cls: "fund-overview-return-axis-spacer" });
+    returnGroups.forEach((group, index) => {
+      const value = values[index];
+      const width = Math.abs(value) / maxAbsoluteValue * 50;
+      const row = returnChart.createDiv({ cls: "fund-overview-return-row" });
+      const identity = row.createDiv({ cls: "fund-overview-return-name" });
+      identity.style.setProperty("--group-color", group.color);
+      identity.createSpan({ cls: "fund-overview-dot" });
+      identity.createSpan({ text: group.name });
+      const plot = row.createDiv({ cls: "fund-overview-return-plot" });
+      if (value !== 0) {
+        const bar = plot.createDiv({ cls: `fund-overview-return-bar ${value > 0 ? "positive-bar" : "negative-bar"}` });
+        bar.style.width = `${width}%`;
+      }
+      row.createEl("b", { cls: toneOf(value), text: formatResultValue(value) });
+    });
+  };
+  renderGroupReturns(returnSelect.value);
+  returnSelect.addEventListener("change", async () => {
+    const metric = returnSelect.value === "profit" ? "profit" : "rate";
+    plugin.settings.groupReturnMetric = metric;
+    renderGroupReturns(metric);
+    try {
+      await plugin.saveSettings();
+    } catch (error) {
+      console.error("[基金助手] 分组回报显示偏好保存失败", error);
     }
-    row.createEl("b", { cls: toneOf(rate), text: signedPercent(rate) });
-  }
+  });
 
   const fundSection = root.createDiv({ cls: "fund-overview-section" });
   const fundSectionHead = fundSection.createDiv({ cls: "fund-overview-section-head" });
