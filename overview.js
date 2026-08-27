@@ -247,14 +247,15 @@ function renderFundOverview(plugin, element, sourceFile) {
     const name = groupMain.createDiv({ cls: "fund-overview-group-name" });
     name.createSpan({ cls: "fund-overview-dot" });
     name.createEl("strong", { text: group.name });
-    groupMain.createEl("b", { text: money(group.amount) });
     const metrics = row.createDiv({ cls: "fund-overview-group-metrics" });
     const addMetric = (label, value, tone = "") => {
       const item = metrics.createDiv();
       item.createSpan({ text: label });
       item.createEl("b", { cls: tone, text: value });
     };
+    addMetric("持有金额", money(group.amount));
     addMetric("持有收益", signedMoney(group.profit), toneOf(group.profit));
+    addMetric("持有收益率", signedPercent(group.profitRate), toneOf(group.profitRate));
     addMetric("当前占比", percent(group.share));
     addMetric("目标占比", group.target === null ? "--" : percent(group.target));
     addMetric("偏差", group.deviation === null ? "--" : signedPercent(group.deviation), toneOf(group.deviation));
