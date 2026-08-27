@@ -1,0 +1,11 @@
+{
+  "name": "fund-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Obsidian 基金持仓、定投与网格策略管理插件",
+  "scripts": {
+    "build": "node build-plugin.js",
+    "test": "node test.js"
+  },
+  "license": "MIT"
+}
