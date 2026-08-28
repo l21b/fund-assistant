@@ -2267,38 +2267,24 @@ class GridExecutionConfirmModal extends Modal {
     const removing = cancelingTrade;
     const triggerLabel = pointTrade
       ? Number(this.options.tradePosition) === 0
-        ? "中轴"
+        ? `${action}中轴`
         : `${Number(this.options.tradePosition) < 0 ? "买" : "卖"}${Math.abs(Number(this.options.tradePosition))}格`
       : "--";
-    this.modalEl.addClass("fund-grid-axis-confirm-modal");
+    this.modalEl.addClass("fund-grid-execution-confirm-modal");
     contentEl.empty();
-    contentEl.createEl("h2", { text: restoringTrade ? `恢复${action}记录` : removing ? `取消${action}记录` : `确认记录${action}` });
-    const metrics = contentEl.createDiv({ cls: "fund-grid-axis-confirm-grid" });
-    const addMetric = (label, value) => {
-      const item = metrics.createDiv();
-      item.createSpan({ text: label });
-      item.createEl("b", { text: value });
-    };
-    addMetric("操作", restoringTrade ? `恢复${action}` : removing ? `取消${action}` : action);
-    addMetric("触发位置", triggerLabel);
-    addMetric("参考收盘价", decimal(this.options.levelPrice));
-    addMetric("行情日期", pointTrade ? this.options.tradeDate || "--" : this.options.fund.gridMarketDate || "--");
-    contentEl.createEl("p", {
-      cls: "fund-grid-axis-confirm-note",
-      text: restoringTrade
-        ? "恢复后该空心点将变回实心点；只有当前网格周期的记录会参与策略计算。"
-        : cancelingTrade
-        ? "取消后该实心点将保留为空心点，并退出策略计算；以后仍可点击恢复。"
-        : "请仅在已经完成对应操作后记录。实心点会参与当前网格周期计算。",
-    });
+    contentEl.createEl("h2", { text: restoringTrade ? "确认恢复" : removing ? "确认撤销" : "确认记录" });
+    const summary = contentEl.createDiv({ cls: `fund-grid-execution-summary is-${this.options.side}` });
+    summary.createSpan({ text: pointTrade ? this.options.tradeDate || "--" : this.options.fund.gridMarketDate || "--" });
+    summary.createSpan({ text: triggerLabel.replace(/格$/, "") });
+    summary.createSpan({ text: decimal(this.options.levelPrice) });
     new Setting(contentEl)
       .addButton((button) => button.setButtonText("取消").onClick(() => this.close()))
-      .addButton((button) => button.setCta().setButtonText(restoringTrade ? "确认恢复" : removing ? "确认取消" : "确认记录").onClick(async () => {
+      .addButton((button) => button.setCta().setButtonText(restoringTrade ? "确认恢复" : removing ? "确认撤销" : `确认${action}`).onClick(async () => {
         if (this.saving) return;
         this.saving = true;
         try {
           await this.plugin.toggleGridExecution(this.options);
-          new Notice(restoringTrade ? "已恢复网格记录" : removing ? "已取消网格记录" : `已记录${action}`);
+          new Notice(restoringTrade ? "已恢复网格记录" : removing ? "已撤销网格记录" : `已记录${action}`);
           this.close();
         } catch (error) {
           new Notice(error?.message || String(error));
