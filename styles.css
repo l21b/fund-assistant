@@ -324,16 +324,13 @@
 .fund-grid-summary-item.is-paired {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
+  align-items: center;
   gap: 10px;
 }
 
 .fund-grid-summary-metric {
   min-width: 0;
-}
-
-.fund-grid-summary-metric:last-child {
-  text-align: right;
+  text-align: center;
 }
 
 .fund-grid-chart {

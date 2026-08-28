@@ -9,6 +9,14 @@ const gridNumber = (value) => Number.isFinite(Number(value)) ? Number(value) : 0
 const gridDecimal = (value, digits = 4) => gridNumber(value).toLocaleString("zh-CN", {
   maximumFractionDigits: digits,
 });
+const gridDecimalPlaces = (value, maxDigits = 4) => {
+  const normalized = gridNumber(value).toFixed(maxDigits).replace(/0+$/, "").replace(/\.$/, "");
+  return normalized.includes(".") ? normalized.split(".")[1].length : 0;
+};
+const gridFixedDecimal = (value, digits = 0) => gridNumber(value).toLocaleString("zh-CN", {
+  minimumFractionDigits: digits,
+  maximumFractionDigits: digits,
+});
 
 function gridMarketSymbol(code) {
   const normalized = String(code || "").trim();
@@ -586,17 +594,25 @@ function renderGridOverview(plugin, element) {
       action ? actionSide === "buy" ? "negative" : "positive" : "",
     );
     addSummary("参考现价", strategy.currentPrice > 0 ? gridDecimal(strategy.currentPrice) : "--");
+    const axisDigits = Math.max(
+      gridDecimalPlaces(strategy.executionAxis, 4),
+      gridDecimalPlaces(strategy.suggestedAxis, 4),
+    );
     addPairedSummary(
       "执行中轴",
-      strategy.executionAxis > 0 ? gridDecimal(strategy.executionAxis) : "--",
+      strategy.executionAxis > 0 ? gridFixedDecimal(strategy.executionAxis, axisDigits) : "--",
       "建议中轴",
-      strategy.suggestedAxis > 0 ? gridDecimal(strategy.suggestedAxis) : "--",
+      strategy.suggestedAxis > 0 ? gridFixedDecimal(strategy.suggestedAxis, axisDigits) : "--",
+    );
+    const spacingDigits = Math.max(
+      gridDecimalPlaces(strategy.spacing, 2),
+      gridDecimalPlaces(strategy.suggestedSpacing, 2),
     );
     addPairedSummary(
       "网格间距",
-      strategy.spacing > 0 ? `${gridDecimal(strategy.spacing, 2)}%` : "--",
+      strategy.spacing > 0 ? `${gridFixedDecimal(strategy.spacing, spacingDigits)}%` : "--",
       "建议网格",
-      strategy.suggestedSpacing > 0 ? `${gridDecimal(strategy.suggestedSpacing, 2)}%` : "--",
+      strategy.suggestedSpacing > 0 ? `${gridFixedDecimal(strategy.suggestedSpacing, spacingDigits)}%` : "--",
     );
 
     const chart = card.createDiv({ cls: "fund-grid-chart" });
@@ -756,6 +772,8 @@ module.exports = {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridDecimalPlaces,
+  gridFixedDecimal,
   gridMarketIsProvisional,
   gridMarketSymbol,
   gridLevelPrice,

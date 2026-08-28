@@ -18,6 +18,8 @@ const {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridDecimalPlaces,
+  gridFixedDecimal,
   gridLevelPrice,
   gridMarketIsProvisional,
   gridMarketSymbol,
@@ -81,6 +83,10 @@ assert.throws(() => gridLevelPrice(100, 5, "buy", 6), /1到5/);
 assert.equal(gridCycleId("518880", "2026-08-26", 100, 5), "518880@2026-08-26@100@5");
 assert.equal(gridCycleId("510310", "2026-08-26", 4.592000, 3.0000), "510310@2026-08-26@4.592@3");
 assert.equal(gridCycleId("", "2026-08-26", 100, 5), "");
+assert.equal(gridDecimalPlaces(1.82, 4), 2);
+assert.equal(gridDecimalPlaces(1.8, 4), 1);
+assert.equal(gridDecimalPlaces(3, 2), 0);
+assert.equal(gridFixedDecimal(1.8, 2), "1.80");
 assert.notEqual(
   gridCycleId("518880", "2026-08-26", 100, 5),
   gridCycleId("510310", "2026-08-26", 100, 5),
