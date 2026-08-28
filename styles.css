@@ -326,8 +326,12 @@
   border-bottom: 0;
 }
 
+.fund-qdii-table tr.is-held {
+  background: color-mix(in srgb, var(--fund-held-color) 11%, transparent);
+}
+
 .fund-qdii-table tr.is-held td {
-  background: color-mix(in srgb, var(--fund-held-color) 8%, transparent);
+  background: transparent !important;
 }
 
 .fund-qdii-table td:first-child {
@@ -341,22 +345,6 @@
   font-size: 1em;
   font-weight: 600;
   text-decoration: none;
-}
-
-.fund-qdii-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.fund-qdii-held-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--fund-held-color);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fund-held-color) 18%, transparent);
 }
 
 .fund-qdii-table td:first-child small {

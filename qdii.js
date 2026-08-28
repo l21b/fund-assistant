@@ -209,8 +209,7 @@ function renderQdiiQuota(plugin, element) {
   });
 
   if (!cache.funds.length) {
-    root.createDiv({ cls: "fund-qdii-empty", text: plugin.qdiiRefreshing ? "正在获取额度与费率…" : "正在准备额度数据…" });
-    plugin.ensureQdiiQuotaFresh();
+    root.createDiv({ cls: "fund-qdii-empty", text: plugin.qdiiRefreshing ? "正在获取额度与费率…" : "暂无额度数据，请点击更新额度" });
     return;
   }
 
@@ -237,9 +236,7 @@ function renderQdiiQuota(plugin, element) {
         row.style.setProperty("--fund-held-color", definition?.color || "#d5a936");
       }
       const identity = row.createEl("td");
-      const nameLine = identity.createDiv({ cls: "fund-qdii-name" });
-      if (heldFund) nameLine.createSpan({ cls: "fund-qdii-held-dot", attr: { title: "已持仓", "aria-label": "已持仓" } });
-      nameLine.createEl("a", {
+      identity.createEl("a", {
         text: fund.name,
         attr: { href: fund.profileUrl, target: "_blank", rel: "noopener noreferrer" },
       });
@@ -250,7 +247,6 @@ function renderQdiiQuota(plugin, element) {
       row.createEl("td", { cls: "fund-qdii-fee", text: Number.isFinite(totalFee) ? `${totalFee.toFixed(2)}%` : "-" });
     }
   }
-  plugin.ensureQdiiQuotaFresh();
 }
 
 module.exports = {

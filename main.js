@@ -636,9 +636,13 @@ class FundNavRefreshPlugin extends Plugin {
         for (const [name, refresh] of [
           ["基金净值", () => this.refreshAll(false)],
           ["网格行情", () => this.refreshGridStrategies(false)],
+          ["QDII额度", () => this.refreshQdiiQuota(false)],
         ]) {
           try {
-            await refresh();
+            const result = await refresh();
+            if (Array.isArray(result?.failures) && result.failures.length) {
+              failures.push(`${name}：${result.failures.join("；")}`);
+            }
           } catch (error) {
             failures.push(`${name}：${error?.message || String(error)}`);
           }
@@ -922,14 +926,6 @@ class FundNavRefreshPlugin extends Plugin {
       file = await this.app.vault.create(QDII_QUOTA_FILE, createQdiiQuotaNoteContent());
     }
     await this.app.workspace.getLeaf(false).openFile(file);
-  }
-
-  ensureQdiiQuotaFresh() {
-    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
-    if (this.qdiiRefreshing || this.settings.qdiiQuota?.checkedDate === today) return;
-    this.refreshQdiiQuota(false).catch((error) => {
-      console.error("[基金助手] QDII额度自动更新失败", error);
-    });
   }
 
   async qdiiFundFees(profileUrl) {
@@ -1522,15 +1518,16 @@ class FundNavRefreshPlugin extends Plugin {
   async refreshAll(showStartNotice) {
     if (this.refreshing) {
       if (showStartNotice) new Notice("基金数据正在更新，请稍候");
-      return;
+      return { updated: 0, unchanged: 0, failures: [] };
     }
     this.refreshing = true;
     if (showStartNotice) new Notice("正在更新基金净值与定投…");
     try {
       const files = this.app.vault.getMarkdownFiles().filter((file) => this.isFundFile(file));
       if (!files.length) {
-        new Notice(`没有在 ${FUND_FOLDER} 找到基金笔记`);
-        return;
+        const message = `没有在 ${FUND_FOLDER} 找到基金笔记`;
+        new Notice(message);
+        return { updated: 0, unchanged: 0, failures: [message] };
       }
 
       const histories = new Map();
@@ -1609,6 +1606,7 @@ class FundNavRefreshPlugin extends Plugin {
       }
       if (failures.length) console.error("[基金助手]", failures);
       if (warnings.length) console.warn("[基金助手]", warnings);
+      return { updated, unchanged, failures, warnings };
     } finally {
       this.refreshing = false;
     }
@@ -2593,7 +2591,7 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
         });
       });
     containerEl.createEl("h3", { text: "净值更新" });
-    new Setting(containerEl).setName("首次打开投资页面时更新").setDesc("每次启动 Obsidian 后，首次打开投资页面时更新基金净值和网格行情；QDII额度页面按天单独更新。")
+    new Setting(containerEl).setName("首次打开投资页面时更新").setDesc("每次启动 Obsidian 后，首次打开任一投资页面时依次更新基金净值、网格行情和QDII额度。")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.refreshOnStartup).onChange(async (value) => {
         this.plugin.settings.refreshOnStartup = value;
         await this.plugin.saveSettings();
