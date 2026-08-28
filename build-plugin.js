@@ -26,15 +26,24 @@ const bundledGrid = [
   "})();",
 ].join("\n");
 
+const qdii = withoutExports(read("qdii.js"));
+const bundledQdii = [
+  "const { QDII_SOURCE_URL, normalizeQdiiQuotaCache, parseQdiiFundFees, parseQdiiQuotaHtml, renderQdiiQuota } = (() => {",
+  qdii.split("\n").map((line) => `  ${line}`).join("\n"),
+  "  return { QDII_SOURCE_URL, normalizeQdiiQuotaCache, parseQdiiFundFees, parseQdiiQuotaHtml, renderQdiiQuota };",
+  "})();",
+].join("\n");
+
 let main = read("main.js")
   .replace(/^const \{ FUND_GROUPS, groupColor \} = require\("\.\/constants"\);\r?\n/m, "")
   .replace(/^const \{ dailyHoldingProfit, totalHoldingCost \} = require\("\.\/fund-math"\);\r?\n/m, "")
   .replace(/^const \{ renderFundOverview \} = require\("\.\/overview"\);\r?\n/m, "")
+  .replace(/^const \{\r?\n  QDII_SOURCE_URL,\r?\n  normalizeQdiiQuotaCache,\r?\n  parseQdiiFundFees,\r?\n  parseQdiiQuotaHtml,\r?\n  renderQdiiQuota,\r?\n\} = require\("\.\/qdii"\);\r?\n/m, "")
   .replace(/^const \{\r?\n  GRID_LOOKBACK_DAYS,\r?\n  calculateSuggestedAxis,\r?\n  calculateSuggestedSpacing,\r?\n  evaluateGridAxisReview,\r?\n  gridCycleId,\r?\n  gridMarketSymbol,\r?\n  gridOfficialRows,\r?\n  parseGridKlinePayload,\r?\n  parseGridQuoteText,\r?\n  renderGridOverview,\r?\n\} = require\("\.\/grid"\);\r?\n/m, "");
 
 const marker = "const DEFAULT_SETTINGS =";
 if (!main.includes(marker)) throw new Error("无法定位 main.js 插入点");
-main = main.replace(marker, `${constants}\n\n${fundMath}\n\n${bundledOverview}\n\n${bundledGrid}\n\n${marker}`);
+main = main.replace(marker, `${constants}\n\n${fundMath}\n\n${bundledOverview}\n\n${bundledGrid}\n\n${bundledQdii}\n\n${marker}`);
 
 const outputDir = path.join(root, "build");
 fs.mkdirSync(outputDir, { recursive: true });

@@ -10,6 +10,12 @@ Module._load = originalModuleLoad;
 const { buildOverviewData, sortFunds } = require("./overview");
 const { groupColor } = require("./constants");
 const {
+  normalizeQdiiQuotaCache,
+  parseQdiiFundFees,
+  parseQdiiQuotaHtml,
+  quotaChannels,
+} = require("./qdii");
+const {
   GRID_VISIBLE_LEVELS,
   buildGridChartModel,
   buildGridTriggerPoints,
@@ -37,6 +43,7 @@ const {
   createFundNoteContent,
   createGridOverviewNoteContent,
   createOverviewNoteContent,
+  createQdiiQuotaNoteContent,
   dailyHoldingProfit,
   decodeGridQuoteResponse,
   applyGridStrategyChanges,
@@ -63,6 +70,61 @@ const {
 
 assert.equal(fixedDecimal(1.233, 4), "1.2330");
 assert.equal(fixedDecimal(1.2334, 4), "1.2334");
+assert.match(createQdiiQuotaNoteContent(), /```fund-qdii-quota/);
+assert.deepEqual(quotaChannels("10元", "—"), { distributor: "10元", direct: "未单列" });
+assert.deepEqual(
+  quotaChannels("代销 10元 直销 100元", "代销（第三方平台）10元；大成直销（官网/APP）100元"),
+  { distributor: "10元", direct: "100元" },
+);
+assert.deepEqual(
+  quotaChannels("200元", "仅基金直销，代销无此额度"),
+  { distributor: "无额度", direct: "200元" },
+);
+assert.deepEqual(
+  quotaChannels("100元", "广发基金APP直销，100元"),
+  { distributor: "未单列", direct: "100元" },
+);
+const qdiiFixture = `
+  <h2>当日速览 · 2026-08-28</h2>
+  <h3>标普500 <span>共 3 只</span></h3>
+  <table><tbody>
+    <tr><td><a href="/fund/008401.html">大成标普500C</a>（008401）</td><td>限大额 ✓公告直核</td><td><span>代销</span> 10元 <span>直销</span> 100元</td><td>代销（第三方平台）10元；大成直销（官网/APP）100元</td><td>公告</td></tr>
+    <tr><td><a href="/fund/006075.html">博时标普500C</a>（006075）</td><td>暂停申购</td><td>—</td><td>—</td><td>公告</td></tr>
+  </tbody></table>
+  <h3>纳斯达克100 <span>共 2 只</span></h3>
+  <table><tbody>
+    <tr><td><a href="/fund/021000.html">南方纳指I</a>（021000）</td><td>限大额</td><td>200元</td><td>仅南方基金直销(APP/官网)，代销无此额度</td><td>公告</td></tr>
+    <tr><td><a href="/fund/123456.html">开放基金</a>（123456）</td><td>开放申购</td><td>正常申购</td><td>—</td><td>公告</td></tr>
+  </tbody></table>`;
+assert.deepEqual(parseQdiiQuotaHtml(qdiiFixture), {
+  reportDate: "2026-08-28",
+  funds: [
+    {
+      topic: "标普500", code: "008401", name: "大成标普500C", status: "限额申购",
+      distributor: "10元", direct: "100元", managementFee: "", custodyFee: "",
+      profileUrl: "https://anxinletech.com/fund/008401.html",
+    },
+    {
+      topic: "纳斯达克100", code: "021000", name: "南方纳指I", status: "限额申购",
+      distributor: "无额度", direct: "200元", managementFee: "", custodyFee: "",
+      profileUrl: "https://anxinletech.com/fund/021000.html",
+    },
+    {
+      topic: "纳斯达克100", code: "123456", name: "开放基金", status: "开放申购",
+      distributor: "正常申购", direct: "未单列", managementFee: "", custodyFee: "",
+      profileUrl: "https://anxinletech.com/fund/123456.html",
+    },
+  ],
+});
+assert.deepEqual(parseQdiiFundFees(`
+  <div class="row"><span class="k">管理费率</span><span>0.60%</span></div>
+  <div class="row"><span class="k">托管费率</span><span>0.20%</span></div>
+`), { managementFee: "0.60%", custodyFee: "0.20%" });
+assert.deepEqual(parseQdiiFundFees(`
+  <div class="row"><span class="k">管理费率</span><span>1%</span></div>
+  <div class="row"><span class="k">托管费率</span><span>0.2%</span></div>
+`), { managementFee: "1.00%", custodyFee: "0.20%" });
+assert.deepEqual(normalizeQdiiQuotaCache(null), { checkedDate: "", reportDate: "", funds: [] });
 
 assert.equal(gridAxisAdoptionMode(1.2, 1.2, "正常"), "disabled");
 assert.equal(gridAxisAdoptionMode(0, 1.2, "正常"), "disabled");

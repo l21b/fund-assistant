@@ -10,6 +10,13 @@ const { FUND_GROUPS, groupColor } = require("./constants");
 const { dailyHoldingProfit, totalHoldingCost } = require("./fund-math");
 const { renderFundOverview } = require("./overview");
 const {
+  QDII_SOURCE_URL,
+  normalizeQdiiQuotaCache,
+  parseQdiiFundFees,
+  parseQdiiQuotaHtml,
+  renderQdiiQuota,
+} = require("./qdii");
+const {
   GRID_LOOKBACK_DAYS,
   calculateSuggestedAxis,
   calculateSuggestedSpacing,
@@ -26,12 +33,14 @@ const FUND_FOLDER = "投资/基金持仓";
 const OVERVIEW_FILE = "投资/投资总览.md";
 const GROUP_CONFIG_FILE = "投资/基金配置.json";
 const GRID_OVERVIEW_FILE = "投资/网格策略.md";
+const QDII_QUOTA_FILE = "投资/QDII额度.md";
 const DEFAULT_SETTINGS = {
   refreshOnStartup: true,
   setupPromptShown: false,
   gridHistory: {},
   selectedGridFundCode: "",
   groupReturnMetric: "rate",
+  qdiiQuota: { checkedDate: "", reportDate: "", funds: [] },
 };
 const FUND_PROPERTY_ORDER = [
   "基金编号",
@@ -364,6 +373,22 @@ function createGridOverviewNoteContent() {
   ].join("\n");
 }
 
+function createQdiiQuotaNoteContent() {
+  return [
+    "---",
+    "tags:",
+    "  - 投资",
+    "  - QDII",
+    "cssclasses:",
+    "  - fund-qdii-note",
+    "---",
+    "",
+    "```fund-qdii-quota",
+    "```",
+    "",
+  ].join("\n");
+}
+
 function normalizedFundPropertyKeys(frontmatter) {
   const existing = Object.keys(frontmatter).filter((key) => !OBSOLETE_FUND_PROPERTIES.has(key));
   const existingSet = new Set(existing);
@@ -462,12 +487,15 @@ class FundNavRefreshPlugin extends Plugin {
     }
     this.settings.selectedGridFundCode = String(this.settings.selectedGridFundCode || "");
     this.settings.groupReturnMetric = this.settings.groupReturnMetric === "profit" ? "profit" : "rate";
+    this.settings.qdiiQuota = normalizeQdiiQuotaCache(this.settings.qdiiQuota);
     this.groupConfig = await this.loadGroupConfiguration();
     this.refreshing = false;
     this.gridRefreshing = false;
+    this.qdiiRefreshing = false;
     this.fundDashboardViews = new Set();
     this.fundOverviewViews = new Set();
     this.gridOverviewViews = new Set();
+    this.qdiiQuotaViews = new Set();
     this.renderRefreshTimer = null;
     this.sessionRefreshTimer = null;
     this.sessionRefreshState = "idle";
@@ -491,6 +519,16 @@ class FundNavRefreshPlugin extends Plugin {
       id: "refresh-grid-market",
       name: "更新网格参考行情",
       callback: () => this.refreshGridStrategies(true),
+    });
+    this.addCommand({
+      id: "open-qdii-quota",
+      name: "打开QDII额度",
+      callback: () => this.openQdiiQuota(),
+    });
+    this.addCommand({
+      id: "refresh-qdii-quota",
+      name: "更新QDII额度",
+      callback: () => this.refreshQdiiQuota(true),
     });
     this.addCommand({
       id: "configure-current-fund-dca",
@@ -523,8 +561,15 @@ class FundNavRefreshPlugin extends Plugin {
         renderGridOverview(this, element, file);
       }
     });
+    this.registerMarkdownCodeBlockProcessor("fund-qdii-quota", (_source, element, context) => {
+      const file = this.app.vault.getFileByPath(context.sourcePath);
+      if (file) {
+        this.qdiiQuotaViews.add({ element, file });
+        renderQdiiQuota(this, element, file);
+      }
+    });
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
-      if (this.isFundFile(file) || file.path === OVERVIEW_FILE || file.path === GRID_OVERVIEW_FILE) {
+      if (this.isFundFile(file) || file.path === OVERVIEW_FILE || file.path === GRID_OVERVIEW_FILE || file.path === QDII_QUOTA_FILE) {
         this.scheduleRenderedRefresh();
       }
     }));
@@ -560,7 +605,7 @@ class FundNavRefreshPlugin extends Plugin {
   }
 
   isInvestmentPage(file) {
-    return Boolean(file && (this.isFundFile(file) || file.path === OVERVIEW_FILE || file.path === GRID_OVERVIEW_FILE));
+    return Boolean(file && (this.isFundFile(file) || file.path === OVERVIEW_FILE || file.path === GRID_OVERVIEW_FILE || file.path === QDII_QUOTA_FILE));
   }
 
   maybeRunSessionRefresh(file) {
@@ -626,6 +671,14 @@ class FundNavRefreshPlugin extends Plugin {
       }
       view.element.empty();
       renderGridOverview(this, view.element, view.file);
+    }
+    for (const view of [...this.qdiiQuotaViews]) {
+      if (!view.element.isConnected) {
+        this.qdiiQuotaViews.delete(view);
+        continue;
+      }
+      view.element.empty();
+      renderQdiiQuota(this, view.element, view.file);
     }
   }
 
@@ -850,6 +903,82 @@ class FundNavRefreshPlugin extends Plugin {
     await this.app.workspace.getLeaf(false).openFile(file);
   }
 
+  async openQdiiQuota() {
+    let file = this.app.vault.getFileByPath(QDII_QUOTA_FILE);
+    if (!file) {
+      await this.ensureFolder(QDII_QUOTA_FILE.split("/").slice(0, -1).join("/"));
+      file = await this.app.vault.create(QDII_QUOTA_FILE, createQdiiQuotaNoteContent());
+    }
+    await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  ensureQdiiQuotaFresh() {
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+    if (this.qdiiRefreshing || this.settings.qdiiQuota?.checkedDate === today) return;
+    this.refreshQdiiQuota(false).catch((error) => {
+      console.error("[基金助手] QDII额度自动更新失败", error);
+    });
+  }
+
+  async qdiiFundFees(profileUrl) {
+    const response = await requestUrl({
+      url: profileUrl,
+      method: "GET",
+      headers: { "User-Agent": "Mozilla/5.0", Referer: QDII_SOURCE_URL },
+      throw: false,
+    });
+    if (response.status < 200 || response.status >= 300) throw new Error(`基金档案 HTTP ${response.status}`);
+    return parseQdiiFundFees(response.text);
+  }
+
+  async refreshQdiiQuota(showNotice = false) {
+    if (this.qdiiRefreshing) {
+      if (showNotice) new Notice("QDII额度正在更新，请稍候");
+      return;
+    }
+    this.qdiiRefreshing = true;
+    if (showNotice) new Notice("正在更新QDII额度与费率…");
+    try {
+      const response = await requestUrl({
+        url: QDII_SOURCE_URL,
+        method: "GET",
+        headers: { "User-Agent": "Mozilla/5.0", Referer: "https://anxinletech.com/" },
+        throw: false,
+      });
+      if (response.status < 200 || response.status >= 300) throw new Error(`额度日报 HTTP ${response.status}`);
+      const report = parseQdiiQuotaHtml(response.text);
+      const funds = report.funds.map((fund) => ({ ...fund }));
+      const feeFailures = [];
+      const concurrency = 4;
+      for (let offset = 0; offset < funds.length; offset += concurrency) {
+        await Promise.all(funds.slice(offset, offset + concurrency).map(async (fund) => {
+          try {
+            Object.assign(fund, await this.qdiiFundFees(fund.profileUrl));
+          } catch (error) {
+            feeFailures.push(`${fund.code}：${error?.message || String(error)}`);
+          }
+        }));
+      }
+      this.settings.qdiiQuota = normalizeQdiiQuotaCache({
+        checkedDate: new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }),
+        reportDate: report.reportDate,
+        funds,
+      });
+      await this.saveSettings();
+      this.scheduleRenderedRefresh();
+      if (showNotice) {
+        const message = `QDII额度已更新：${funds.length} 只可申购基金${feeFailures.length ? `，${feeFailures.length} 只费率暂缺` : ""}`;
+        new Notice(message, feeFailures.length ? 7000 : 4000);
+      }
+      if (feeFailures.length) console.warn("[基金助手] QDII费率", feeFailures);
+    } catch (error) {
+      if (showNotice) new Notice(`QDII额度更新失败：${error?.message || String(error)}`, 7000);
+      else console.error("[基金助手] QDII额度更新失败", error);
+    } finally {
+      this.qdiiRefreshing = false;
+    }
+  }
+
   async gridMarketData(referenceCode) {
     const code = String(referenceCode || "").trim();
     const symbol = gridMarketSymbol(code);
@@ -1049,7 +1178,9 @@ class FundNavRefreshPlugin extends Plugin {
   }
 
   isInvestmentWorkspaceReady() {
-    return this.isFundWorkspaceReady() && Boolean(this.app.vault.getFileByPath(GRID_OVERVIEW_FILE));
+    return this.isFundWorkspaceReady()
+      && Boolean(this.app.vault.getFileByPath(GRID_OVERVIEW_FILE))
+      && Boolean(this.app.vault.getFileByPath(QDII_QUOTA_FILE));
   }
 
   async initializeInvestmentWorkspace(openOverview = false) {
@@ -1063,6 +1194,9 @@ class FundNavRefreshPlugin extends Plugin {
       if (!overviewFile) overviewFile = await this.app.vault.create(logPath, createOverviewNoteContent());
       if (!this.app.vault.getFileByPath(GRID_OVERVIEW_FILE)) {
         await this.app.vault.create(GRID_OVERVIEW_FILE, createGridOverviewNoteContent());
+      }
+      if (!this.app.vault.getFileByPath(QDII_QUOTA_FILE)) {
+        await this.app.vault.create(QDII_QUOTA_FILE, createQdiiQuotaNoteContent());
       }
       if (!this.app.vault.getFileByPath(GROUP_CONFIG_FILE)) {
         const groups = Object.fromEntries(this.getGroupDefinitions().map((group) => [group.name, {
@@ -1654,7 +1788,7 @@ class InvestmentWorkspaceSetupModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.createEl("h2", { text: "创建投资空间" });
-    contentEl.createEl("p", { text: "一键创建投资总览、网格策略页面和基金持仓目录，已有文件不会被覆盖。" });
+    contentEl.createEl("p", { text: "一键创建投资总览、网格策略、QDII额度页面和基金持仓目录，已有文件不会被覆盖。" });
     new Setting(contentEl)
       .addButton((button) => button.setButtonText("暂不创建").onClick(() => this.close()))
       .addButton((button) => button.setCta().setButtonText("一键创建").onClick(async () => {
@@ -2418,7 +2552,7 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
     const ready = this.plugin.isInvestmentWorkspaceReady();
     new Setting(containerEl)
       .setName(ready ? "投资空间已就绪" : "投资空间尚未完成")
-      .setDesc(ready ? "投资总览、网格策略页面和基金持仓目录均可用。" : "一键补齐投资总览、网格策略页面和基金持仓目录，不会覆盖已有文件。")
+      .setDesc(ready ? "投资总览、网格策略、QDII额度页面和基金持仓目录均可用。" : "一键补齐投资总览、网格策略、QDII额度页面和基金持仓目录，不会覆盖已有文件。")
       .addButton((button) => {
         button.setButtonText(ready ? "检查并修复" : "一键创建");
         if (!ready) button.setCta();
@@ -2429,7 +2563,7 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
         });
       });
     containerEl.createEl("h3", { text: "净值更新" });
-    new Setting(containerEl).setName("首次打开投资页面时更新").setDesc("每次启动 Obsidian 后，首次打开投资总览、网格策略或基金页面时更新一次。")
+    new Setting(containerEl).setName("首次打开投资页面时更新").setDesc("每次启动 Obsidian 后，首次打开投资页面时更新基金净值和网格行情；QDII额度页面按天单独更新。")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.refreshOnStartup).onChange(async (value) => {
         this.plugin.settings.refreshOnStartup = value;
         await this.plugin.saveSettings();
@@ -2442,6 +2576,7 @@ FundNavRefreshPlugin.testables = {
   createFundNoteContent,
   createGridOverviewNoteContent,
   createOverviewNoteContent,
+  createQdiiQuotaNoteContent,
   dailyHoldingProfit,
   decodeGridQuoteResponse,
   applyGridStrategyChanges,
@@ -2457,8 +2592,11 @@ FundNavRefreshPlugin.testables = {
   normalizeGridExecutedLevels,
   normalizeGridTradeRecords,
   normalizeNavHistory,
+  normalizeQdiiQuotaCache,
   parseDate,
   parseFundName,
+  parseQdiiFundFees,
+  parseQdiiQuotaHtml,
   positionFromSnapshot,
   positiveNumber,
   sanitizeFundName,
