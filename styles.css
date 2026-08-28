@@ -258,7 +258,6 @@
   container-type: inline-size;
 }
 
-.fund-qdii-head,
 .fund-qdii-section-head {
   display: flex;
   align-items: center;
@@ -266,37 +265,14 @@
   gap: 16px;
 }
 
-.fund-qdii-head {
-  padding: 4px 2px;
-}
-
-.fund-qdii-head h1 {
-  margin: 0 0 6px;
-  font-size: 1.65em;
-}
-
 .fund-qdii-section-head h2 {
   margin: 0;
   font-size: 1.08em;
 }
 
-.fund-qdii-head span,
 .fund-qdii-section-head span {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
-}
-
-.fund-qdii-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.fund-qdii-actions button {
-  height: 32px;
-  margin: 0;
-  padding: 0 12px;
-  white-space: nowrap;
 }
 
 .fund-qdii-section {
@@ -344,34 +320,6 @@
 
 .fund-qdii-table th:not(:first-child) {
   width: 16%;
-}
-
-.fund-qdii-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  box-shadow: none;
-  font: inherit;
-  font-weight: inherit;
-  white-space: nowrap;
-}
-
-.fund-qdii-sort:hover,
-.fund-qdii-table th[aria-sort]:not([aria-sort="none"]) .fund-qdii-sort {
-  background: transparent;
-  color: var(--text-normal);
-  box-shadow: none;
-}
-
-.fund-qdii-sort-direction {
-  color: var(--text-accent);
-  font-size: 0.88em;
 }
 
 .fund-qdii-table tbody tr:last-child td {

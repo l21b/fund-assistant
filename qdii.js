@@ -134,19 +134,7 @@ function qdiiQuotaAmount(value) {
   return Number(match[1]) * multiplier;
 }
 
-function normalizeQdiiSort(value) {
-  const normalized = String(value || "default");
-  return /^(name|distributor|direct|fee)-(asc|desc)$/.test(normalized) ? normalized : "default";
-}
-
-function nextQdiiSort(current, key) {
-  const normalized = normalizeQdiiSort(current);
-  const [activeKey, activeDirection] = normalized.split("-");
-  if (activeKey === key) return `${key}-${activeDirection === "asc" ? "desc" : "asc"}`;
-  return `${key}-${key === "name" || key === "fee" ? "asc" : "desc"}`;
-}
-
-function compareQdiiNumbers(left, right, direction) {
+function compareQdiiNumbers(left, right, direction = "desc") {
   const leftMissing = Number.isNaN(left);
   const rightMissing = Number.isNaN(right);
   if (leftMissing || rightMissing) {
@@ -156,35 +144,49 @@ function compareQdiiNumbers(left, right, direction) {
   return direction === "desc" ? right - left : left - right;
 }
 
-function sortQdiiFunds(funds, sort = "default") {
+function qdiiTotalQuota(fund) {
+  const amounts = [qdiiQuotaAmount(fund?.distributor), qdiiQuotaAmount(fund?.direct)].filter((value) => !Number.isNaN(value));
+  return amounts.length ? amounts.reduce((total, value) => total + value, 0) : NaN;
+}
+
+function sortQdiiFunds(funds) {
   const rows = (Array.isArray(funds) ? funds : []).map((fund, index) => ({ fund, index }));
-  const normalized = normalizeQdiiSort(sort);
-  if (normalized === "default") return rows.map(({ fund }) => fund);
-  const [key, direction] = normalized.split("-");
   return rows.sort((left, right) => {
-    let difference = 0;
-    if (key === "fee") {
-      difference = compareQdiiNumbers(qdiiFeeTotal(left.fund), qdiiFeeTotal(right.fund), direction);
-    } else if (key === "distributor" || key === "direct") {
-      difference = compareQdiiNumbers(qdiiQuotaAmount(left.fund[key]), qdiiQuotaAmount(right.fund[key]), direction);
-    } else if (key === "name") {
-      difference = String(left.fund.name || "").localeCompare(String(right.fund.name || ""), "zh-CN-u-co-pinyin", {
-        sensitivity: "base",
-      });
-      if (direction === "desc") difference *= -1;
-    }
-    return difference || String(left.fund.code).localeCompare(String(right.fund.code)) || left.index - right.index;
+    const difference = compareQdiiNumbers(qdiiTotalQuota(left.fund), qdiiTotalQuota(right.fund));
+    return difference
+      || String(left.fund.name || "").localeCompare(String(right.fund.name || ""), "zh-CN-u-co-pinyin", { sensitivity: "base" })
+      || String(left.fund.code).localeCompare(String(right.fund.code))
+      || left.index - right.index;
   }).map(({ fund }) => fund);
+}
+
+const QDII_FUND_COMPARE_FIELDS = ["topic", "code", "name", "status", "distributor", "direct", "managementFee", "custodyFee"];
+
+function qdiiQuotaChangeCounts(previousFunds, nextFunds, failedCodes = []) {
+  const previous = Array.isArray(previousFunds) ? previousFunds : [];
+  const next = Array.isArray(nextFunds) ? nextFunds : [];
+  const failures = new Set(Array.from(failedCodes || [], (code) => String(code || "")));
+  const previousByCode = new Map(previous.map((fund) => [String(fund?.code || ""), fund]));
+  const nextCodes = new Set(next.map((fund) => String(fund?.code || "")));
+  let updated = previous.filter((fund) => !nextCodes.has(String(fund?.code || ""))).length;
+  let unchanged = 0;
+  for (const fund of next) {
+    if (failures.has(String(fund?.code || ""))) continue;
+    const stored = previousByCode.get(String(fund?.code || ""));
+    if (stored && QDII_FUND_COMPARE_FIELDS.every((field) => String(stored[field] || "") === String(fund[field] || ""))) unchanged += 1;
+    else updated += 1;
+  }
+  return { updated, unchanged };
 }
 
 function renderQdiiQuota(plugin, element) {
   const cache = normalizeQdiiQuotaCache(plugin.settings?.qdiiQuota);
   const root = element.createDiv({ cls: "fund-qdii" });
-  const header = root.createDiv({ cls: "fund-qdii-head" });
+  const header = root.createDiv({ cls: "fund-qdii-head fund-grid-head" });
   const heading = header.createDiv();
   heading.createEl("h1", { text: "QDII额度" });
   heading.createEl("span", { text: cache.reportDate ? `更新于 ${cache.reportDate}` : "尚未更新" });
-  const actions = header.createDiv({ cls: "fund-qdii-actions" });
+  const actions = header.createDiv({ cls: "fund-qdii-actions fund-grid-actions" });
   const sourceButton = actions.createEl("button", { text: "数据来源" });
   sourceButton.addEventListener("click", () => window.open(QDII_SOURCE_URL, "_blank", "noopener,noreferrer"));
   const refreshButton = actions.createEl("button", { cls: "mod-cta", text: "更新额度" });
@@ -206,8 +208,7 @@ function renderQdiiQuota(plugin, element) {
   }
 
   for (const topic of QDII_TOPICS) {
-    const activeSort = normalizeQdiiSort(plugin.settings?.qdiiSort);
-    const funds = sortQdiiFunds(cache.funds.filter((fund) => fund.topic === topic), activeSort);
+    const funds = sortQdiiFunds(cache.funds.filter((fund) => fund.topic === topic));
     const section = root.createDiv({ cls: "fund-qdii-section" });
     const sectionHead = section.createDiv({ cls: "fund-qdii-section-head" });
     sectionHead.createEl("h2", { text: topic });
@@ -215,25 +216,7 @@ function renderQdiiQuota(plugin, element) {
     const scroll = section.createDiv({ cls: "fund-qdii-table-scroll" });
     const table = scroll.createEl("table", { cls: "fund-qdii-table" });
     const headerRow = table.createEl("thead").createEl("tr");
-    const [activeKey, activeDirection] = activeSort.split("-");
-    for (const [key, label] of [["name", "基金"], ["distributor", "代销额度"], ["direct", "直销额度"], ["fee", "费率"]]) {
-      const isActive = activeKey === key;
-      const cell = headerRow.createEl("th", {
-        attr: { "aria-sort": isActive ? (activeDirection === "asc" ? "ascending" : "descending") : "none" },
-      });
-      const button = cell.createEl("button", { cls: "fund-qdii-sort", attr: { type: "button" } });
-      button.createSpan({ text: label });
-      if (isActive) button.createSpan({ cls: "fund-qdii-sort-direction", text: activeDirection === "asc" ? "↑" : "↓" });
-      button.addEventListener("click", async () => {
-        plugin.settings.qdiiSort = nextQdiiSort(activeSort, key);
-        plugin.scheduleRenderedRefresh();
-        try {
-          await plugin.saveSettings();
-        } catch (error) {
-          console.error("[基金助手] QDII排序偏好保存失败", error);
-        }
-      });
-    }
+    for (const label of ["基金", "代销额度", "直销额度", "费率"]) headerRow.createEl("th", { text: label });
     const body = table.createEl("tbody");
     for (const fund of funds) {
       const row = body.createEl("tr");
@@ -260,9 +243,9 @@ module.exports = {
   parseQdiiQuotaHtml,
   quotaChannels,
   qdiiFeeTotal,
+  qdiiQuotaChangeCounts,
   qdiiQuotaAmount,
-  nextQdiiSort,
-  normalizeQdiiSort,
+  qdiiTotalQuota,
   renderQdiiQuota,
   sortQdiiFunds,
 };

@@ -14,6 +14,7 @@ const {
   normalizeQdiiQuotaCache,
   parseQdiiFundFees,
   parseQdiiQuotaHtml,
+  qdiiQuotaChangeCounts,
   renderQdiiQuota,
 } = require("./qdii");
 const {
@@ -40,7 +41,6 @@ const DEFAULT_SETTINGS = {
   gridHistory: {},
   selectedGridFundCode: "",
   groupReturnMetric: "rate",
-  qdiiSort: "default",
   qdiiQuota: { checkedDate: "", reportDate: "", funds: [] },
 };
 const FUND_PROPERTY_ORDER = [
@@ -488,10 +488,7 @@ class FundNavRefreshPlugin extends Plugin {
     }
     this.settings.selectedGridFundCode = String(this.settings.selectedGridFundCode || "");
     this.settings.groupReturnMetric = this.settings.groupReturnMetric === "profit" ? "profit" : "rate";
-    const legacyQdiiSort = { fee: "fee-asc", distributor: "distributor-desc", direct: "direct-desc", code: "name-asc" };
-    this.settings.qdiiSort = legacyQdiiSort[this.settings.qdiiSort] || (/^(name|distributor|direct|fee)-(asc|desc)$/.test(this.settings.qdiiSort)
-      ? this.settings.qdiiSort
-      : "default");
+    delete this.settings.qdiiSort;
     this.settings.qdiiQuota = normalizeQdiiQuotaCache(this.settings.qdiiQuota);
     this.groupConfig = await this.loadGroupConfiguration();
     this.refreshing = false;
@@ -939,11 +936,13 @@ class FundNavRefreshPlugin extends Plugin {
   async refreshQdiiQuota(showNotice = false) {
     if (this.qdiiRefreshing) {
       if (showNotice) new Notice("QDII额度正在更新，请稍候");
-      return;
+      return { updated: 0, unchanged: 0, failures: [] };
     }
     this.qdiiRefreshing = true;
     if (showNotice) new Notice("正在更新QDII额度与费率…");
     try {
+      const previousCache = normalizeQdiiQuotaCache(this.settings.qdiiQuota);
+      const previousByCode = new Map(previousCache.funds.map((fund) => [fund.code, fund]));
       const response = await requestUrl({
         url: QDII_SOURCE_URL,
         method: "GET",
@@ -954,16 +953,24 @@ class FundNavRefreshPlugin extends Plugin {
       const report = parseQdiiQuotaHtml(response.text);
       const funds = report.funds.map((fund) => ({ ...fund }));
       const feeFailures = [];
+      const feeFailureCodes = new Set();
       const concurrency = 4;
       for (let offset = 0; offset < funds.length; offset += concurrency) {
         await Promise.all(funds.slice(offset, offset + concurrency).map(async (fund) => {
           try {
             Object.assign(fund, await this.qdiiFundFees(fund.profileUrl));
           } catch (error) {
+            const stored = previousByCode.get(fund.code);
+            if (stored) {
+              fund.managementFee = stored.managementFee;
+              fund.custodyFee = stored.custodyFee;
+            }
+            feeFailureCodes.add(fund.code);
             feeFailures.push(`${fund.code}：${error?.message || String(error)}`);
           }
         }));
       }
+      const changes = qdiiQuotaChangeCounts(previousCache.funds, funds, feeFailureCodes);
       this.settings.qdiiQuota = normalizeQdiiQuotaCache({
         checkedDate: new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }),
         reportDate: report.reportDate,
@@ -972,13 +979,15 @@ class FundNavRefreshPlugin extends Plugin {
       await this.saveSettings();
       this.scheduleRenderedRefresh();
       if (showNotice) {
-        const message = `QDII额度已更新：${funds.length} 只可申购基金${feeFailures.length ? `，${feeFailures.length} 只费率暂缺` : ""}`;
-        new Notice(message, feeFailures.length ? 7000 : 4000);
+        const summary = `QDII额度：${changes.updated} 个更新，${changes.unchanged} 个已是最新，${feeFailures.length} 个失败`;
+        new Notice(feeFailures.length ? `${summary}\n${feeFailures.join("\n")}` : summary, feeFailures.length ? 10000 : 4500);
       }
       if (feeFailures.length) console.warn("[基金助手] QDII费率", feeFailures);
+      return { ...changes, failures: feeFailures };
     } catch (error) {
       if (showNotice) new Notice(`QDII额度更新失败：${error?.message || String(error)}`, 7000);
       else console.error("[基金助手] QDII额度更新失败", error);
+      return { updated: 0, unchanged: 0, failures: [error?.message || String(error)] };
     } finally {
       this.qdiiRefreshing = false;
     }
