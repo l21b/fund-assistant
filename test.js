@@ -95,18 +95,16 @@ assert.deepEqual(gridDateTickIndexes(1), [0]);
 assert.deepEqual(gridDateTickIndexes(0), []);
 assert.equal(gridMarkerTooltipText({
   date: "2026-08-14",
-  state: "已触发",
   action: "买入",
   position: "买1",
   price: 1.782,
-}), "2026-08-14 · 买1 · 已触发 · 1.782");
+}), "2026-08-14\n买1\n1.782");
 assert.equal(gridMarkerTooltipText({
   date: "2026-08-15",
-  state: "已执行",
   action: "卖出",
   position: "中轴",
   price: 1.8,
-}), "2026-08-15 · 卖出中轴 · 已执行 · 1.8");
+}), "2026-08-15\n卖出中轴\n1.8");
 assert.notEqual(
   gridCycleId("518880", "2026-08-26", 100, 5),
   gridCycleId("510310", "2026-08-26", 100, 5),

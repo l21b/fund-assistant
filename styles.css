@@ -357,7 +357,7 @@
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  white-space: nowrap;
+  white-space: pre-line;
 }
 
 .fund-grid-chart-tooltip.is-visible {

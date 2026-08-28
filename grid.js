@@ -29,9 +29,9 @@ function gridDateTickIndexes(pointCount, maxTicks = 5) {
   )))];
 }
 
-function gridMarkerTooltipText({ date, state, action, position, price }) {
+function gridMarkerTooltipText({ date, action, position, price }) {
   const actionPosition = position === "中轴" ? `${action}中轴` : position;
-  return `${date} · ${actionPosition} · ${state} · ${gridDecimal(price)}`;
+  return `${date}\n${actionPosition}\n${gridDecimal(price)}`;
 }
 
 function gridMarketSymbol(code) {
@@ -760,7 +760,6 @@ function renderGridOverview(plugin, element) {
         ? "中轴"
         : `${markerData.position < 0 ? "买" : "卖"}${Math.abs(markerData.position)}`;
       const actionLabel = markerData.side === "buy" ? "买入" : "卖出";
-      const stateLabel = recorded ? canceled ? "已取消" : "已执行" : "已触发";
       const marker = appendSvg("circle", {
         cx: xOf(pointIndex),
         cy: yOf(markerData.price),
@@ -776,7 +775,6 @@ function renderGridOverview(plugin, element) {
       });
       const tooltipText = gridMarkerTooltipText({
         date: markerData.date,
-        state: stateLabel,
         action: actionLabel,
         position: positionLabel,
         price: markerData.price,
