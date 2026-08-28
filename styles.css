@@ -335,7 +335,7 @@
 
 .fund-grid-chart {
   overflow-x: auto;
-  padding: 14px 14px 8px;
+  padding: 16px 16px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 12px;
   background: var(--background-primary-alt);
@@ -346,18 +346,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .fund-grid-chart-head strong {
-  font-size: 0.92em;
+  font-size: 0.98em;
   font-weight: 600;
 }
 
 .fund-grid-chart-head span,
 .fund-grid-chart-empty {
   color: var(--text-muted);
-  font-size: 0.75em;
+  font-size: 0.82em;
 }
 
 .fund-grid-chart-empty {
@@ -392,12 +392,18 @@
   stroke-dasharray: none;
 }
 
+.fund-grid-chart-date-grid {
+  stroke: color-mix(in srgb, var(--text-faint) 48%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 7;
+}
+
 .fund-grid-chart-label,
 .fund-grid-chart-price-label,
 .fund-grid-chart-date {
   fill: var(--text-muted);
   font-family: var(--font-interface);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .fund-grid-chart-label.is-buy {
@@ -416,7 +422,7 @@
 .fund-grid-chart-line {
   fill: none;
   stroke: var(--grid-group-color, #87909f);
-  stroke-width: 2.4;
+  stroke-width: 2.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -509,7 +515,7 @@
   }
 
   .fund-grid-chart svg {
-    min-width: 720px;
+    min-width: 780px;
   }
 }
 

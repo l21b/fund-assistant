@@ -18,6 +18,17 @@ const gridFixedDecimal = (value, digits = 0) => gridNumber(value).toLocaleString
   maximumFractionDigits: digits,
 });
 
+function gridDateTickIndexes(pointCount, maxTicks = 5) {
+  const count = Math.max(0, Math.floor(Number(pointCount) || 0));
+  const limit = Math.max(1, Math.floor(Number(maxTicks) || 1));
+  if (!count) return [];
+  const tickCount = Math.min(count, limit);
+  if (tickCount === 1) return [0];
+  return [...new Set(Array.from({ length: tickCount }, (_, index) => (
+    Math.round(index * (count - 1) / (tickCount - 1))
+  )))];
+}
+
 function gridMarketSymbol(code) {
   const normalized = String(code || "").trim();
   if (!/^\d{6}$/.test(normalized)) throw new RangeError("参考ETF代码必须是6位数字");
@@ -632,8 +643,8 @@ function renderGridOverview(plugin, element) {
     }
     const svgNamespace = "http://www.w3.org/2000/svg";
     const width = 1000;
-    const height = 480;
-    const margin = { top: 20, right: 82, bottom: 42, left: 62 };
+    const height = 540;
+    const margin = { top: 24, right: 92, bottom: 54, left: 72 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
     const xOf = (index) => margin.left + (model.points.length <= 1 ? plotWidth : index / (model.points.length - 1) * plotWidth);
@@ -662,15 +673,24 @@ function renderGridOverview(plugin, element) {
       appendSvg("text", { x: width - margin.right + 8, y: y + 4, class: "fund-grid-chart-price-label" }, gridDecimal(level.price));
     }
     if (model.points.length) {
+      const tickIndexes = gridDateTickIndexes(model.points.length);
+      for (const index of tickIndexes) {
+        appendSvg("line", {
+          x1: xOf(index),
+          x2: xOf(index),
+          y1: margin.top,
+          y2: height - margin.bottom,
+          class: "fund-grid-chart-date-grid",
+        });
+      }
       const path = model.points.map((point, index) => `${index ? "L" : "M"}${xOf(index).toFixed(2)},${yOf(point.close).toFixed(2)}`).join(" ");
       appendSvg("path", { d: path, class: "fund-grid-chart-line" });
-      const tickIndexes = [...new Set([0, Math.floor((model.points.length - 1) / 2), model.points.length - 1])];
       for (const index of tickIndexes) {
         const point = model.points[index];
-        appendSvg("text", { x: xOf(index), y: height - 10, "text-anchor": index === 0 ? "start" : index === model.points.length - 1 ? "end" : "middle", class: "fund-grid-chart-date" }, point.date.slice(5));
+        appendSvg("text", { x: xOf(index), y: height - 14, "text-anchor": index === 0 ? "start" : index === model.points.length - 1 ? "end" : "middle", class: "fund-grid-chart-date" }, point.date.slice(5));
       }
       const latest = model.points.at(-1);
-      appendSvg("circle", { cx: xOf(model.points.length - 1), cy: yOf(latest.close), r: 4.5, class: "fund-grid-chart-current" });
+      appendSvg("circle", { cx: xOf(model.points.length - 1), cy: yOf(latest.close), r: 5.5, class: "fund-grid-chart-current" });
     }
     const pointIndexByDate = new Map(model.points.map((point, index) => [point.date, index]));
     const markerKey = (cycleId, date, side, position) => `${cycleId}|${date}|${side}|${position}`;
@@ -718,7 +738,7 @@ function renderGridOverview(plugin, element) {
       const marker = appendSvg("circle", {
         cx: xOf(pointIndex),
         cy: yOf(markerData.price),
-        r: 8,
+        r: 9,
         class: `fund-grid-chart-trade is-${markerData.side}${canceled ? " is-canceled" : recorded ? "" : " is-opportunity"} is-clickable`,
         tabindex: 0,
         role: "button",
@@ -772,6 +792,7 @@ module.exports = {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridDateTickIndexes,
   gridDecimalPlaces,
   gridFixedDecimal,
   gridMarketIsProvisional,

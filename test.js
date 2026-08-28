@@ -18,6 +18,7 @@ const {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridDateTickIndexes,
   gridDecimalPlaces,
   gridFixedDecimal,
   gridLevelPrice,
@@ -87,6 +88,10 @@ assert.equal(gridDecimalPlaces(1.82, 4), 2);
 assert.equal(gridDecimalPlaces(1.8, 4), 1);
 assert.equal(gridDecimalPlaces(3, 2), 0);
 assert.equal(gridFixedDecimal(1.8, 2), "1.80");
+assert.deepEqual(gridDateTickIndexes(40), [0, 10, 20, 29, 39]);
+assert.deepEqual(gridDateTickIndexes(3), [0, 1, 2]);
+assert.deepEqual(gridDateTickIndexes(1), [0]);
+assert.deepEqual(gridDateTickIndexes(0), []);
 assert.notEqual(
   gridCycleId("518880", "2026-08-26", 100, 5),
   gridCycleId("510310", "2026-08-26", 100, 5),
