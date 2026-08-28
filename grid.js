@@ -29,9 +29,8 @@ function gridDateTickIndexes(pointCount, maxTicks = 5) {
   )))];
 }
 
-function gridMarkerTooltipText({ date, action, position, price }) {
-  const actionPosition = position === "中轴" ? `${action}中轴` : position;
-  return `${date}\n${actionPosition}\n${gridDecimal(price)}`;
+function gridMarkerTooltipText({ date, position, price }) {
+  return `${date}\n${position}\n${gridDecimal(price)}`;
 }
 
 function gridMarketSymbol(code) {
@@ -775,7 +774,6 @@ function renderGridOverview(plugin, element) {
       });
       const tooltipText = gridMarkerTooltipText({
         date: markerData.date,
-        action: actionLabel,
         position: positionLabel,
         price: markerData.price,
       });
