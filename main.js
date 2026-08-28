@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS = {
   gridHistory: {},
   selectedGridFundCode: "",
   groupReturnMetric: "rate",
+  qdiiSort: "default",
   qdiiQuota: { checkedDate: "", reportDate: "", funds: [] },
 };
 const FUND_PROPERTY_ORDER = [
@@ -487,6 +488,9 @@ class FundNavRefreshPlugin extends Plugin {
     }
     this.settings.selectedGridFundCode = String(this.settings.selectedGridFundCode || "");
     this.settings.groupReturnMetric = this.settings.groupReturnMetric === "profit" ? "profit" : "rate";
+    this.settings.qdiiSort = ["fee", "distributor", "direct", "code"].includes(this.settings.qdiiSort)
+      ? this.settings.qdiiSort
+      : "default";
     this.settings.qdiiQuota = normalizeQdiiQuotaCache(this.settings.qdiiQuota);
     this.groupConfig = await this.loadGroupConfiguration();
     this.refreshing = false;
@@ -2559,6 +2563,20 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
         button.onClick(async () => {
           button.setDisabled(true);
           await this.plugin.initializeInvestmentWorkspace(false);
+          this.display();
+        });
+      });
+    containerEl.createEl("h3", { text: "QDII额度" });
+    const qdiiReady = Boolean(this.app.vault.getFileByPath(QDII_QUOTA_FILE));
+    new Setting(containerEl)
+      .setName(qdiiReady ? "QDII额度页面已创建" : "创建QDII额度页面")
+      .setDesc("用于查看标普500、纳斯达克100方向当前可申购基金的代销额度、直销额度和费率。")
+      .addButton((button) => {
+        button.setButtonText(qdiiReady ? "打开页面" : "创建页面");
+        if (!qdiiReady) button.setCta();
+        button.onClick(async () => {
+          button.setDisabled(true);
+          await this.plugin.openQdiiQuota();
           this.display();
         });
       });

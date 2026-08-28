@@ -283,6 +283,19 @@
   gap: 8px;
 }
 
+.fund-qdii-actions select {
+  width: 116px;
+  height: 32px;
+  margin: 0;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-primary-alt);
+  color: var(--text-muted);
+  font-size: 0.82em;
+  box-shadow: none;
+}
+
 .fund-qdii-source-link {
   padding: 6px 11px;
   border: 1px solid var(--background-modifier-border);
@@ -335,7 +348,7 @@
 }
 
 .fund-qdii-table td:first-child {
-  width: 42%;
+  width: 55%;
 }
 
 .fund-qdii-table td:first-child a {
@@ -351,31 +364,8 @@
   color: var(--text-muted);
 }
 
-.fund-qdii-status {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.fund-qdii-status.is-open {
-  background: color-mix(in srgb, #44a878 15%, transparent);
-  color: #44a878;
-}
-
-.fund-qdii-status.is-limited {
-  background: color-mix(in srgb, #d5a936 16%, transparent);
-  color: #d5a936;
-}
-
 .fund-qdii-fee {
   white-space: nowrap;
-}
-
-.fund-qdii-fee span + span::before {
-  margin: 0 7px;
-  color: var(--text-faint);
-  content: "/";
 }
 
 .fund-qdii-empty {
@@ -391,6 +381,10 @@
   .fund-qdii-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .fund-qdii-actions {
+    flex-wrap: wrap;
   }
 
   .fund-qdii-section {

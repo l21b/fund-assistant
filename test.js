@@ -13,7 +13,10 @@ const {
   normalizeQdiiQuotaCache,
   parseQdiiFundFees,
   parseQdiiQuotaHtml,
+  qdiiFeeTotal,
+  qdiiQuotaAmount,
   quotaChannels,
+  sortQdiiFunds,
 } = require("./qdii");
 const {
   GRID_VISIBLE_LEVELS,
@@ -125,6 +128,19 @@ assert.deepEqual(parseQdiiFundFees(`
   <div class="row"><span class="k">托管费率</span><span>0.2%</span></div>
 `), { managementFee: "1.00%", custodyFee: "0.20%" });
 assert.deepEqual(normalizeQdiiQuotaCache(null), { checkedDate: "", reportDate: "", funds: [] });
+assert.equal(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "0.15%" }), 0.65);
+assert.ok(Number.isNaN(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "" })));
+assert.equal(qdiiQuotaAmount("正常申购"), Number.POSITIVE_INFINITY);
+assert.equal(qdiiQuotaAmount("1万元"), 10000);
+assert.equal(qdiiQuotaAmount("-"), -1);
+const qdiiSortFixture = [
+  { code: "000003", distributor: "10元", direct: "100元", managementFee: "0.80%", custodyFee: "0.20%" },
+  { code: "000001", distributor: "正常申购", direct: "未单列", managementFee: "0.50%", custodyFee: "0.15%" },
+  { code: "000002", distributor: "5元", direct: "200元", managementFee: "0.60%", custodyFee: "0.20%" },
+];
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "fee").map((fund) => fund.code), ["000001", "000002", "000003"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "distributor").map((fund) => fund.code), ["000001", "000003", "000002"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "direct").map((fund) => fund.code), ["000002", "000003", "000001"]);
 
 assert.equal(gridAxisAdoptionMode(1.2, 1.2, "正常"), "disabled");
 assert.equal(gridAxisAdoptionMode(0, 1.2, "正常"), "disabled");
