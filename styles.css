@@ -345,7 +345,6 @@
 .fund-grid-chart-tooltip {
   position: absolute;
   z-index: 4;
-  max-width: 190px;
   padding: 8px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -358,7 +357,7 @@
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  white-space: pre-line;
+  white-space: nowrap;
 }
 
 .fund-grid-chart-tooltip.is-visible {

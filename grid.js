@@ -30,7 +30,8 @@ function gridDateTickIndexes(pointCount, maxTicks = 5) {
 }
 
 function gridMarkerTooltipText({ date, state, action, position, price }) {
-  return `${date}\n${state} · ${action} · ${position}\n收盘价 ${gridDecimal(price)}`;
+  const actionPosition = position === "中轴" ? `${action}中轴` : position;
+  return `${date} · ${actionPosition} · ${state} · ${gridDecimal(price)}`;
 }
 
 function gridMarketSymbol(code) {

@@ -99,7 +99,14 @@ assert.equal(gridMarkerTooltipText({
   action: "买入",
   position: "买1",
   price: 1.782,
-}), "2026-08-14\n已触发 · 买入 · 买1\n收盘价 1.782");
+}), "2026-08-14 · 买1 · 已触发 · 1.782");
+assert.equal(gridMarkerTooltipText({
+  date: "2026-08-15",
+  state: "已执行",
+  action: "卖出",
+  position: "中轴",
+  price: 1.8,
+}), "2026-08-15 · 卖出中轴 · 已执行 · 1.8");
 assert.notEqual(
   gridCycleId("518880", "2026-08-26", 100, 5),
   gridCycleId("510310", "2026-08-26", 100, 5),
