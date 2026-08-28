@@ -334,11 +334,36 @@
 }
 
 .fund-grid-chart {
+  position: relative;
   overflow-x: auto;
   padding: 16px 16px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 12px;
   background: var(--background-primary-alt);
+}
+
+.fund-grid-chart-tooltip {
+  position: absolute;
+  z-index: 4;
+  max-width: 190px;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  white-space: pre-line;
+}
+
+.fund-grid-chart-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 .fund-grid-chart-head {

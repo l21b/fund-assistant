@@ -29,6 +29,10 @@ function gridDateTickIndexes(pointCount, maxTicks = 5) {
   )))];
 }
 
+function gridMarkerTooltipText({ date, state, action, position, price }) {
+  return `${date}\n${state} · ${action} · ${position}\n收盘价 ${gridDecimal(price)}`;
+}
+
 function gridMarketSymbol(code) {
   const normalized = String(code || "").trim();
   if (!/^\d{6}$/.test(normalized)) throw new RangeError("参考ETF代码必须是6位数字");
@@ -660,6 +664,27 @@ function renderGridOverview(plugin, element) {
       svg.appendChild(node);
       return node;
     };
+    const markerTooltip = chart.createDiv({ cls: "fund-grid-chart-tooltip" });
+    const positionMarkerTooltip = (clientX, clientY) => {
+      const bounds = chart.getBoundingClientRect();
+      const offset = 14;
+      const visibleLeft = chart.scrollLeft + 8;
+      const visibleTop = chart.scrollTop + 8;
+      const visibleRight = chart.scrollLeft + chart.clientWidth - markerTooltip.offsetWidth - 8;
+      const visibleBottom = chart.scrollTop + chart.clientHeight - markerTooltip.offsetHeight - 8;
+      let left = clientX - bounds.left + chart.scrollLeft + offset;
+      let top = clientY - bounds.top + chart.scrollTop + offset;
+      if (left > visibleRight) left = clientX - bounds.left + chart.scrollLeft - markerTooltip.offsetWidth - offset;
+      if (top > visibleBottom) top = clientY - bounds.top + chart.scrollTop - markerTooltip.offsetHeight - offset;
+      markerTooltip.style.left = `${Math.max(visibleLeft, left)}px`;
+      markerTooltip.style.top = `${Math.max(visibleTop, top)}px`;
+    };
+    const showMarkerTooltip = (text, clientX, clientY) => {
+      markerTooltip.setText(text);
+      markerTooltip.addClass("is-visible");
+      positionMarkerTooltip(clientX, clientY);
+    };
+    const hideMarkerTooltip = () => markerTooltip.removeClass("is-visible");
     for (const level of [...model.levels].reverse()) {
       const y = yOf(level.price);
       appendSvg("line", {
@@ -748,28 +773,43 @@ function renderGridOverview(plugin, element) {
             : `${markerData.date}已${actionLabel}${positionLabel}，点击取消记录`
           : `${markerData.date}曾触发${actionLabel}${positionLabel}，点击记录`,
       });
-      const markerTitle = document.createElementNS(svgNamespace, "title");
-      markerTitle.textContent = `${markerData.date} · ${stateLabel}${actionLabel} · ${positionLabel} · ${gridDecimal(markerData.price)} · 点击${recorded ? canceled ? "恢复" : "取消" : "记录"}`;
-      marker.appendChild(markerTitle);
-      const toggleTrade = () => plugin.requestGridExecution(recorded ? {
-        fund: strategy.fund,
-        mode: canceled ? "restore-trade" : "cancel-trade",
-        side: markerData.side,
-        levelPrice: markerData.price,
-        tradeIndex: markerData.recordIndex,
-        tradeRaw: trade.raw,
-        tradePosition: markerData.position,
-        tradeDate: markerData.date,
-        tradeCycleId: markerData.cycleId,
-      } : {
-        fund: strategy.fund,
-        mode: "record-trade",
-        side: markerData.side,
-        levelPrice: markerData.price,
-        tradePosition: markerData.position,
-        tradeDate: markerData.date,
-        tradeCycleId: markerData.cycleId,
+      const tooltipText = gridMarkerTooltipText({
+        date: markerData.date,
+        state: stateLabel,
+        action: actionLabel,
+        position: positionLabel,
+        price: markerData.price,
       });
+      marker.addEventListener("pointerenter", (event) => showMarkerTooltip(tooltipText, event.clientX, event.clientY));
+      marker.addEventListener("pointermove", (event) => positionMarkerTooltip(event.clientX, event.clientY));
+      marker.addEventListener("pointerleave", hideMarkerTooltip);
+      marker.addEventListener("focus", () => {
+        const bounds = marker.getBoundingClientRect();
+        showMarkerTooltip(tooltipText, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      });
+      marker.addEventListener("blur", hideMarkerTooltip);
+      const toggleTrade = () => {
+        hideMarkerTooltip();
+        plugin.requestGridExecution(recorded ? {
+          fund: strategy.fund,
+          mode: canceled ? "restore-trade" : "cancel-trade",
+          side: markerData.side,
+          levelPrice: markerData.price,
+          tradeIndex: markerData.recordIndex,
+          tradeRaw: trade.raw,
+          tradePosition: markerData.position,
+          tradeDate: markerData.date,
+          tradeCycleId: markerData.cycleId,
+        } : {
+          fund: strategy.fund,
+          mode: "record-trade",
+          side: markerData.side,
+          levelPrice: markerData.price,
+          tradePosition: markerData.position,
+          tradeDate: markerData.date,
+          tradeCycleId: markerData.cycleId,
+        });
+      };
       marker.addEventListener("click", toggleTrade);
       marker.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -796,6 +836,7 @@ module.exports = {
   gridDecimalPlaces,
   gridFixedDecimal,
   gridMarketIsProvisional,
+  gridMarkerTooltipText,
   gridMarketSymbol,
   gridLevelPrice,
   gridOfficialRows,
