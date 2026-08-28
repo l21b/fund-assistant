@@ -250,8 +250,12 @@
 }
 
 .fund-qdii {
+  display: grid;
+  gap: 16px;
+  margin: 8px 0 32px;
   color: var(--text-normal);
-  font-size: 16px;
+  container-name: fund-qdii;
+  container-type: inline-size;
 }
 
 .fund-qdii-head,
@@ -263,12 +267,17 @@
 }
 
 .fund-qdii-head {
-  margin-bottom: 18px;
+  padding: 4px 2px;
 }
 
-.fund-qdii-head h1,
+.fund-qdii-head h1 {
+  margin: 0 0 6px;
+  font-size: 1.65em;
+}
+
 .fund-qdii-section-head h2 {
   margin: 0;
+  font-size: 1.08em;
 }
 
 .fund-qdii-head span,
@@ -283,33 +292,18 @@
   gap: 8px;
 }
 
-.fund-qdii-actions select {
-  width: 116px;
+.fund-qdii-actions button {
   height: 32px;
   margin: 0;
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  background-color: var(--background-primary-alt);
-  color: var(--text-muted);
-  font-size: 0.82em;
-  box-shadow: none;
-}
-
-.fund-qdii-source-link {
-  padding: 6px 11px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--button-radius);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  text-decoration: none;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .fund-qdii-section {
-  margin-top: 14px;
-  padding: 18px;
+  min-width: 0;
+  padding: 20px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--background-secondary);
 }
 
@@ -318,12 +312,13 @@
 }
 
 .fund-qdii-table-scroll {
-  overflow-x: auto;
+  min-width: 0;
+  overflow: visible;
 }
 
 .fund-qdii-table {
   width: 100%;
-  min-width: 780px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
@@ -338,9 +333,45 @@
 
 .fund-qdii-table th {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: 500;
+  font-size: 0.9em;
+  font-weight: 400;
   white-space: nowrap;
+}
+
+.fund-qdii-table th:first-child {
+  width: 52%;
+}
+
+.fund-qdii-table th:not(:first-child) {
+  width: 16%;
+}
+
+.fund-qdii-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  font: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.fund-qdii-sort:hover,
+.fund-qdii-table th[aria-sort]:not([aria-sort="none"]) .fund-qdii-sort {
+  background: transparent;
+  color: var(--text-normal);
+  box-shadow: none;
+}
+
+.fund-qdii-sort-direction {
+  color: var(--text-accent);
+  font-size: 0.88em;
 }
 
 .fund-qdii-table tbody tr:last-child td {
@@ -348,12 +379,14 @@
 }
 
 .fund-qdii-table td:first-child {
-  width: 55%;
+  min-width: 0;
 }
 
 .fund-qdii-table td:first-child a {
   display: block;
+  overflow-wrap: anywhere;
   color: var(--text-normal);
+  font-size: 1em;
   font-weight: 600;
   text-decoration: none;
 }
@@ -365,6 +398,12 @@
 }
 
 .fund-qdii-fee {
+  white-space: nowrap;
+}
+
+.fund-qdii-table td:not(:first-child) {
+  font-size: 0.98em;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -389,6 +428,20 @@
 
   .fund-qdii-section {
     padding: 14px;
+  }
+
+  .fund-qdii-table th,
+  .fund-qdii-table td {
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .fund-qdii-table th:first-child {
+    width: 46%;
+  }
+
+  .fund-qdii-table th:not(:first-child) {
+    width: 18%;
   }
 }
 

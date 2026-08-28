@@ -129,26 +129,49 @@ function qdiiQuotaAmount(value) {
   const normalized = String(value || "").trim();
   if (normalized === "正常申购") return Number.POSITIVE_INFINITY;
   const match = normalized.match(/^(\d+(?:\.\d+)?)(万|亿)?元$/);
-  if (!match) return -1;
+  if (!match) return NaN;
   const multiplier = match[2] === "亿" ? 100000000 : match[2] === "万" ? 10000 : 1;
   return Number(match[1]) * multiplier;
 }
 
-function sortQdiiFunds(funds, key = "default") {
+function normalizeQdiiSort(value) {
+  const normalized = String(value || "default");
+  return /^(name|distributor|direct|fee)-(asc|desc)$/.test(normalized) ? normalized : "default";
+}
+
+function nextQdiiSort(current, key) {
+  const normalized = normalizeQdiiSort(current);
+  const [activeKey, activeDirection] = normalized.split("-");
+  if (activeKey === key) return `${key}-${activeDirection === "asc" ? "desc" : "asc"}`;
+  return `${key}-${key === "name" || key === "fee" ? "asc" : "desc"}`;
+}
+
+function compareQdiiNumbers(left, right, direction) {
+  const leftMissing = Number.isNaN(left);
+  const rightMissing = Number.isNaN(right);
+  if (leftMissing || rightMissing) {
+    if (leftMissing && rightMissing) return 0;
+    return leftMissing ? 1 : -1;
+  }
+  return direction === "desc" ? right - left : left - right;
+}
+
+function sortQdiiFunds(funds, sort = "default") {
   const rows = (Array.isArray(funds) ? funds : []).map((fund, index) => ({ fund, index }));
-  if (key === "default") return rows.map(({ fund }) => fund);
+  const normalized = normalizeQdiiSort(sort);
+  if (normalized === "default") return rows.map(({ fund }) => fund);
+  const [key, direction] = normalized.split("-");
   return rows.sort((left, right) => {
     let difference = 0;
     if (key === "fee") {
-      const leftFee = qdiiFeeTotal(left.fund);
-      const rightFee = qdiiFeeTotal(right.fund);
-      if (Number.isNaN(leftFee) && !Number.isNaN(rightFee)) difference = 1;
-      else if (!Number.isNaN(leftFee) && Number.isNaN(rightFee)) difference = -1;
-      else difference = leftFee - rightFee;
+      difference = compareQdiiNumbers(qdiiFeeTotal(left.fund), qdiiFeeTotal(right.fund), direction);
     } else if (key === "distributor" || key === "direct") {
-      difference = qdiiQuotaAmount(right.fund[key]) - qdiiQuotaAmount(left.fund[key]);
-    } else if (key === "code") {
-      difference = String(left.fund.code).localeCompare(String(right.fund.code));
+      difference = compareQdiiNumbers(qdiiQuotaAmount(left.fund[key]), qdiiQuotaAmount(right.fund[key]), direction);
+    } else if (key === "name") {
+      difference = String(left.fund.name || "").localeCompare(String(right.fund.name || ""), "zh-CN-u-co-pinyin", {
+        sensitivity: "base",
+      });
+      if (direction === "desc") difference *= -1;
     }
     return difference || String(left.fund.code).localeCompare(String(right.fund.code)) || left.index - right.index;
   }).map(({ fund }) => fund);
@@ -162,34 +185,8 @@ function renderQdiiQuota(plugin, element) {
   heading.createEl("h1", { text: "QDII额度" });
   heading.createEl("span", { text: cache.reportDate ? `更新于 ${cache.reportDate}` : "尚未更新" });
   const actions = header.createDiv({ cls: "fund-qdii-actions" });
-  const sortSelect = actions.createEl("select", { attr: { "aria-label": "QDII基金排序" } });
-  for (const [value, label] of [
-    ["default", "默认"],
-    ["fee", "费率"],
-    ["distributor", "代销额度"],
-    ["direct", "直销额度"],
-    ["code", "基金代码"],
-  ]) {
-    const option = sortSelect.createEl("option", { text: label });
-    option.value = value;
-  }
-  sortSelect.value = ["fee", "distributor", "direct", "code"].includes(plugin.settings?.qdiiSort)
-    ? plugin.settings.qdiiSort
-    : "default";
-  sortSelect.addEventListener("change", async () => {
-    plugin.settings.qdiiSort = sortSelect.value;
-    try {
-      await plugin.saveSettings();
-    } catch (error) {
-      console.error("[基金助手] QDII排序偏好保存失败", error);
-    }
-    plugin.scheduleRenderedRefresh();
-  });
-  const sourceLink = actions.createEl("a", {
-    text: "数据来源",
-    attr: { href: QDII_SOURCE_URL, target: "_blank", rel: "noopener noreferrer" },
-  });
-  sourceLink.addClass("fund-qdii-source-link");
+  const sourceButton = actions.createEl("button", { text: "数据来源" });
+  sourceButton.addEventListener("click", () => window.open(QDII_SOURCE_URL, "_blank", "noopener,noreferrer"));
   const refreshButton = actions.createEl("button", { cls: "mod-cta", text: "更新额度" });
   refreshButton.addEventListener("click", async () => {
     refreshButton.disabled = true;
@@ -209,7 +206,8 @@ function renderQdiiQuota(plugin, element) {
   }
 
   for (const topic of QDII_TOPICS) {
-    const funds = sortQdiiFunds(cache.funds.filter((fund) => fund.topic === topic), sortSelect.value);
+    const activeSort = normalizeQdiiSort(plugin.settings?.qdiiSort);
+    const funds = sortQdiiFunds(cache.funds.filter((fund) => fund.topic === topic), activeSort);
     const section = root.createDiv({ cls: "fund-qdii-section" });
     const sectionHead = section.createDiv({ cls: "fund-qdii-section-head" });
     sectionHead.createEl("h2", { text: topic });
@@ -217,7 +215,25 @@ function renderQdiiQuota(plugin, element) {
     const scroll = section.createDiv({ cls: "fund-qdii-table-scroll" });
     const table = scroll.createEl("table", { cls: "fund-qdii-table" });
     const headerRow = table.createEl("thead").createEl("tr");
-    for (const label of ["基金", "代销额度", "直销额度", "费率"]) headerRow.createEl("th", { text: label });
+    const [activeKey, activeDirection] = activeSort.split("-");
+    for (const [key, label] of [["name", "基金"], ["distributor", "代销额度"], ["direct", "直销额度"], ["fee", "费率"]]) {
+      const isActive = activeKey === key;
+      const cell = headerRow.createEl("th", {
+        attr: { "aria-sort": isActive ? (activeDirection === "asc" ? "ascending" : "descending") : "none" },
+      });
+      const button = cell.createEl("button", { cls: "fund-qdii-sort", attr: { type: "button" } });
+      button.createSpan({ text: label });
+      if (isActive) button.createSpan({ cls: "fund-qdii-sort-direction", text: activeDirection === "asc" ? "↑" : "↓" });
+      button.addEventListener("click", async () => {
+        plugin.settings.qdiiSort = nextQdiiSort(activeSort, key);
+        plugin.scheduleRenderedRefresh();
+        try {
+          await plugin.saveSettings();
+        } catch (error) {
+          console.error("[基金助手] QDII排序偏好保存失败", error);
+        }
+      });
+    }
     const body = table.createEl("tbody");
     for (const fund of funds) {
       const row = body.createEl("tr");
@@ -245,6 +261,8 @@ module.exports = {
   quotaChannels,
   qdiiFeeTotal,
   qdiiQuotaAmount,
+  nextQdiiSort,
+  normalizeQdiiSort,
   renderQdiiQuota,
   sortQdiiFunds,
 };

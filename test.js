@@ -11,6 +11,7 @@ const { buildOverviewData, sortFunds } = require("./overview");
 const { groupColor } = require("./constants");
 const {
   normalizeQdiiQuotaCache,
+  nextQdiiSort,
   parseQdiiFundFees,
   parseQdiiQuotaHtml,
   qdiiFeeTotal,
@@ -132,15 +133,22 @@ assert.equal(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "0.15%" }), 0.65
 assert.ok(Number.isNaN(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "" })));
 assert.equal(qdiiQuotaAmount("正常申购"), Number.POSITIVE_INFINITY);
 assert.equal(qdiiQuotaAmount("1万元"), 10000);
-assert.equal(qdiiQuotaAmount("-"), -1);
+assert.ok(Number.isNaN(qdiiQuotaAmount("-")));
 const qdiiSortFixture = [
-  { code: "000003", distributor: "10元", direct: "100元", managementFee: "0.80%", custodyFee: "0.20%" },
-  { code: "000001", distributor: "正常申购", direct: "未单列", managementFee: "0.50%", custodyFee: "0.15%" },
-  { code: "000002", distributor: "5元", direct: "200元", managementFee: "0.60%", custodyFee: "0.20%" },
+  { code: "000003", name: "易方达基金", distributor: "10元", direct: "100元", managementFee: "0.80%", custodyFee: "0.20%" },
+  { code: "000001", name: "大成基金", distributor: "正常申购", direct: "未单列", managementFee: "0.50%", custodyFee: "0.15%" },
+  { code: "000002", name: "华安基金", distributor: "5元", direct: "200元", managementFee: "0.60%", custodyFee: "0.20%" },
 ];
-assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "fee").map((fund) => fund.code), ["000001", "000002", "000003"]);
-assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "distributor").map((fund) => fund.code), ["000001", "000003", "000002"]);
-assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "direct").map((fund) => fund.code), ["000002", "000003", "000001"]);
+assert.equal(nextQdiiSort("default", "name"), "name-asc");
+assert.equal(nextQdiiSort("name-asc", "name"), "name-desc");
+assert.equal(nextQdiiSort("name-desc", "fee"), "fee-asc");
+assert.equal(nextQdiiSort("fee-asc", "distributor"), "distributor-desc");
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "name-asc").map((fund) => fund.code), ["000001", "000002", "000003"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "name-desc").map((fund) => fund.code), ["000003", "000002", "000001"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "fee-asc").map((fund) => fund.code), ["000001", "000002", "000003"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "fee-desc").map((fund) => fund.code), ["000003", "000002", "000001"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "distributor-desc").map((fund) => fund.code), ["000001", "000003", "000002"]);
+assert.deepEqual(sortQdiiFunds(qdiiSortFixture, "direct-desc").map((fund) => fund.code), ["000002", "000003", "000001"]);
 
 assert.equal(gridAxisAdoptionMode(1.2, 1.2, "正常"), "disabled");
 assert.equal(gridAxisAdoptionMode(0, 1.2, "正常"), "disabled");
