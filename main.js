@@ -575,8 +575,18 @@ class FundNavRefreshPlugin extends Plugin {
       }
       this.sessionRefreshState = "running";
       try {
-        await this.refreshAll(false);
-        await this.refreshGridStrategies(false);
+        const failures = [];
+        for (const [name, refresh] of [
+          ["基金净值", () => this.refreshAll(false)],
+          ["网格行情", () => this.refreshGridStrategies(false)],
+        ]) {
+          try {
+            await refresh();
+          } catch (error) {
+            failures.push(`${name}：${error?.message || String(error)}`);
+          }
+        }
+        if (failures.length) console.error("[基金助手] 首次打开投资页面更新失败", failures);
       } finally {
         this.sessionRefreshState = "complete";
         this.scheduleRenderedRefresh();
@@ -1410,7 +1420,7 @@ class FundNavRefreshPlugin extends Plugin {
       }
 
       if (updated > 0) await this.updateLogDate();
-      const summary = `更新完成：成功 ${updated} · 未更新 ${unchanged} · 失败 ${failures.length}`;
+      const summary = `更新完成：已更新 ${updated} · 已是最新 ${unchanged} · 失败 ${failures.length}`;
       const notice = new Notice(`${summary} · 点击查看详情`, 8000);
       if (notice.noticeEl) {
         notice.noticeEl.addClass("fund-refresh-summary-notice");
@@ -1475,8 +1485,8 @@ class RefreshResultModal extends Modal {
       for (const item of items) list.createEl("li", { text: item });
     };
 
-    addSection("成功", result.updatedItems, "本次没有基金需要更新");
-    addSection("未更新", result.unchangedItems, "没有已是最新的基金");
+    addSection("已更新", result.updatedItems, "本次没有基金需要更新");
+    addSection("已是最新", result.unchangedItems, "没有已是最新的基金");
     addSection("失败", result.failures, "没有更新失败");
     if (result.warnings.length) addSection("配置提醒", result.warnings, "");
 
@@ -1495,6 +1505,7 @@ class GroupConfigurationModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.saving = false;
     this.rows = plugin.getGroupDefinitions().map((group) => ({ ...group }));
     this.initialNames = new Set(this.rows.map((group) => group.name));
   }
@@ -1584,6 +1595,7 @@ class GroupConfigurationModal extends Modal {
   }
 
   async save() {
+    if (this.saving) return;
     const names = this.rows.map((row) => String(row.name || "").trim());
     const normalizedNames = names.map((name) => name.toLocaleLowerCase("zh-CN"));
     if (names.some((name) => !validGroupName(name)) || new Set(normalizedNames).size !== names.length) {
@@ -1597,6 +1609,7 @@ class GroupConfigurationModal extends Modal {
       new Notice("目标占比合计需要等于 100%" );
       return;
     }
+    this.saving = true;
     try {
       const removedNames = [...this.initialNames].filter((name) => name !== "未分类" && !names.includes(name));
       for (const name of removedNames) {
@@ -1621,6 +1634,8 @@ class GroupConfigurationModal extends Modal {
       new Notice("分组配置已保存");
     } catch (error) {
       new Notice(`分组保存失败：${error?.message || String(error)}`);
+    } finally {
+      this.saving = false;
     }
   }
 
@@ -2302,6 +2317,7 @@ class DcaSettingsModal extends Modal {
     super(app);
     this.plugin = plugin;
     this.file = file;
+    this.saving = false;
     const fm = app.metadataCache.getFileCache(file)?.frontmatter || {};
     this.initiallyEnabled = fm["定投启用"] === true;
     const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
@@ -2364,6 +2380,7 @@ class DcaSettingsModal extends Modal {
   }
 
   async save() {
+    if (this.saving) return;
     const schedule = this.form.frequency === "weekly" ? this.form.weekday : this.form.frequency === "monthly" ? this.form.monthday : 0;
     const startDate = effectiveDcaStartDate(this.initiallyEnabled, this.form.enabled, this.form.startDate, this.form.today);
     const valid = validDcaSettings(
@@ -2378,19 +2395,26 @@ class DcaSettingsModal extends Modal {
       new Notice("请检查定投金额、费率和频率");
       return;
     }
-    await this.app.fileManager.processFrontMatter(this.file, (fm) => {
-      fm["定投启用"] = this.form.enabled;
-      if (this.form.enabled) {
-        fm["定投金额"] = round(this.form.amount, 2);
-        fm["定投频率"] = FREQUENCIES[this.form.frequency];
-        fm["定投日期"] = this.form.frequency === "weekly" ? WEEKDAYS[schedule] : this.form.frequency === "monthly" ? schedule : "每个交易日";
-        fm["手续费率"] = round(this.form.feeRate, 4);
-        fm["定投开始日期"] = startDate;
-      }
-      normalizeFundProperties(fm);
-    });
-    this.close();
-    await this.plugin.refreshAll(true);
+    this.saving = true;
+    try {
+      await this.app.fileManager.processFrontMatter(this.file, (fm) => {
+        fm["定投启用"] = this.form.enabled;
+        if (this.form.enabled) {
+          fm["定投金额"] = round(this.form.amount, 2);
+          fm["定投频率"] = FREQUENCIES[this.form.frequency];
+          fm["定投日期"] = this.form.frequency === "weekly" ? WEEKDAYS[schedule] : this.form.frequency === "monthly" ? schedule : "每个交易日";
+          fm["手续费率"] = round(this.form.feeRate, 4);
+          fm["定投开始日期"] = startDate;
+        }
+        normalizeFundProperties(fm);
+      });
+      this.close();
+      await this.plugin.refreshAll(true);
+    } catch (error) {
+      new Notice(`定投设置保存失败：${error?.message || String(error)}`);
+    } finally {
+      this.saving = false;
+    }
   }
 }
 
