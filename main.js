@@ -41,7 +41,7 @@ const DEFAULT_SETTINGS = {
   gridHistory: {},
   selectedGridFundCode: "",
   groupReturnMetric: "rate",
-  qdiiQuota: { checkedDate: "", reportDate: "", funds: [] },
+  qdiiQuota: { checkedDate: "", checkedAt: "", reportDate: "", funds: [] },
 };
 const FUND_PROPERTY_ORDER = [
   "基金编号",
@@ -97,6 +97,16 @@ const parseDate = (value) => {
 };
 const dateKey = (date) => date.toISOString().slice(0, 10);
 const addDays = (date, days) => new Date(date.getTime() + days * 86400000);
+const shanghaiDateTime = (date = new Date()) => {
+  const day = date.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+  const time = date.toLocaleTimeString("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return `${day} ${time}`;
+};
 const money = (value) => Number(value || 0).toLocaleString("zh-CN", {
   style: "currency",
   currency: "CNY",
@@ -971,8 +981,10 @@ class FundNavRefreshPlugin extends Plugin {
         }));
       }
       const changes = qdiiQuotaChangeCounts(previousCache.funds, funds, feeFailureCodes);
+      const checkedAt = shanghaiDateTime();
       this.settings.qdiiQuota = normalizeQdiiQuotaCache({
-        checkedDate: new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }),
+        checkedDate: checkedAt.slice(0, 10),
+        checkedAt,
         reportDate: report.reportDate,
         funds,
       });
@@ -1299,6 +1311,10 @@ class FundNavRefreshPlugin extends Plugin {
     const header = root.createDiv({ cls: "fund-dashboard-head" });
     const identity = header.createDiv({ cls: "fund-dashboard-identity" });
     identity.createEl("h2", { text: file.basename });
+    const overviewFile = this.app.vault.getFileByPath(OVERVIEW_FILE);
+    const overviewFm = overviewFile ? this.app.metadataCache.getFileCache(overviewFile)?.frontmatter || {} : {};
+    const updatedAt = String(overviewFm["更新日期"] || fm["净值日期"] || "");
+    identity.createSpan({ cls: "fund-dashboard-updated", text: updatedAt ? `更新于 ${updatedAt}` : "尚未更新" });
     const identityMeta = identity.createDiv({ cls: "fund-dashboard-identity-meta" });
     identityMeta.createSpan({ cls: "fund-dashboard-code", text: String(fm["基金编号"] || "--") });
     identityMeta.createSpan({ cls: "fund-dashboard-tag", text: groupName });
@@ -1567,7 +1583,7 @@ class FundNavRefreshPlugin extends Plugin {
         }
       }
 
-      if (updated > 0) await this.updateLogDate();
+      if (updated + unchanged > 0) await this.updateLogDate();
       const summary = `更新完成：已更新 ${updated} · 已是最新 ${unchanged} · 失败 ${failures.length}`;
       const notice = new Notice(`${summary} · 点击查看详情`, 8000);
       if (notice.noticeEl) {
@@ -1601,7 +1617,7 @@ class FundNavRefreshPlugin extends Plugin {
   async updateLogDate() {
     const file = this.app.vault.getFileByPath(OVERVIEW_FILE);
     if (!file) return;
-    const localDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+    const localDate = shanghaiDateTime();
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
       frontmatter["更新日期"] = localDate;
     });
@@ -2614,6 +2630,7 @@ FundNavRefreshPlugin.testables = {
   positionFromSnapshot,
   positiveNumber,
   sanitizeFundName,
+  shanghaiDateTime,
   validDcaSettings,
   validGroupName,
   totalHoldingCost,

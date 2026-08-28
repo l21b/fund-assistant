@@ -16,6 +16,7 @@ const {
   qdiiFeeTotal,
   qdiiQuotaChangeCounts,
   qdiiQuotaAmount,
+  qdiiQuotaDisplay,
   qdiiTotalQuota,
   quotaChannels,
   sortQdiiFunds,
@@ -68,6 +69,7 @@ const {
   positionFromSnapshot,
   positiveNumber,
   sanitizeFundName,
+  shanghaiDateTime,
   totalHoldingCost,
   validDcaSettings,
   validGroupName,
@@ -129,12 +131,16 @@ assert.deepEqual(parseQdiiFundFees(`
   <div class="row"><span class="k">管理费率</span><span>1%</span></div>
   <div class="row"><span class="k">托管费率</span><span>0.2%</span></div>
 `), { managementFee: "1.00%", custodyFee: "0.20%" });
-assert.deepEqual(normalizeQdiiQuotaCache(null), { checkedDate: "", reportDate: "", funds: [] });
+assert.deepEqual(normalizeQdiiQuotaCache(null), { checkedDate: "", checkedAt: "", reportDate: "", funds: [] });
+assert.deepEqual(normalizeQdiiQuotaCache({ checkedAt: "2026-08-28 18:30" }), { checkedDate: "2026-08-28", checkedAt: "2026-08-28 18:30", reportDate: "", funds: [] });
 assert.equal(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "0.15%" }), 0.65);
 assert.ok(Number.isNaN(qdiiFeeTotal({ managementFee: "0.50%", custodyFee: "" })));
 assert.equal(qdiiQuotaAmount("正常申购"), Number.POSITIVE_INFINITY);
 assert.equal(qdiiQuotaAmount("1万元"), 10000);
 assert.ok(Number.isNaN(qdiiQuotaAmount("-")));
+assert.equal(qdiiQuotaDisplay("无额度"), "-");
+assert.equal(qdiiQuotaDisplay("未单列"), "-");
+assert.equal(qdiiQuotaDisplay("100元"), "100元");
 const qdiiSortFixture = [
   { code: "000003", name: "易方达基金", distributor: "10元", direct: "100元", managementFee: "0.80%", custodyFee: "0.20%" },
   { code: "000001", name: "大成基金", distributor: "正常申购", direct: "未单列", managementFee: "0.50%", custodyFee: "0.15%" },
@@ -147,6 +153,7 @@ assert.deepEqual(qdiiQuotaChangeCounts(qdiiSortFixture, qdiiSortFixture.map((fun
 assert.deepEqual(qdiiQuotaChangeCounts(qdiiSortFixture, qdiiSortFixture.slice(1)), { updated: 1, unchanged: 2 });
 assert.deepEqual(qdiiQuotaChangeCounts(qdiiSortFixture, qdiiSortFixture.map((fund, index) => index ? fund : { ...fund, direct: "101元" })), { updated: 1, unchanged: 2 });
 assert.deepEqual(qdiiQuotaChangeCounts(qdiiSortFixture, qdiiSortFixture, new Set(["000002"])), { updated: 0, unchanged: 2 });
+assert.equal(shanghaiDateTime(new Date("2026-08-28T10:05:00Z")), "2026-08-28 18:05");
 
 assert.equal(gridAxisAdoptionMode(1.2, 1.2, "正常"), "disabled");
 assert.equal(gridAxisAdoptionMode(0, 1.2, "正常"), "disabled");

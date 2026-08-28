@@ -476,11 +476,11 @@ function renderGridOverview(plugin, element) {
   const header = root.createDiv({ cls: "fund-grid-head" });
   const heading = header.createDiv();
   heading.createEl("h1", { text: "网格策略" });
-  const latestMarketDate = strategies.map((strategy) => strategy.fund.gridMarketDate)
+  const latestMarketAt = strategies.map((strategy) => [strategy.fund.gridMarketDate, strategy.fund.gridMarketTime].filter(Boolean).join(" "))
     .filter(Boolean)
     .sort()
     .at(-1);
-  heading.createEl("span", { text: latestMarketDate ? `更新于 ${latestMarketDate}` : "尚未更新" });
+  heading.createEl("span", { text: latestMarketAt ? `更新于 ${latestMarketAt}` : "尚未更新" });
   const actions = header.createDiv({ cls: "fund-grid-actions" });
   const addButton = actions.createEl("button", { text: "添加策略" });
   addButton.addEventListener("click", () => plugin.openGridStrategyModal());

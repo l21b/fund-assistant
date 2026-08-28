@@ -97,6 +97,7 @@ function parseQdiiFundFees(html) {
 
 function normalizeQdiiQuotaCache(raw) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const checkedAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(source.checkedAt || "")) ? String(source.checkedAt) : "";
   const funds = Array.isArray(source.funds) ? source.funds.filter((fund) => (
     QDII_TOPICS.includes(String(fund?.topic || ""))
       && /^\d{6}$/.test(String(fund?.code || ""))
@@ -113,7 +114,8 @@ function normalizeQdiiQuotaCache(raw) {
     profileUrl: `https://anxinletech.com/fund/${fund.code}.html`,
   })) : [];
   return {
-    checkedDate: /^\d{4}-\d{2}-\d{2}$/.test(String(source.checkedDate || "")) ? String(source.checkedDate) : "",
+    checkedDate: /^\d{4}-\d{2}-\d{2}$/.test(String(source.checkedDate || "")) ? String(source.checkedDate) : checkedAt.slice(0, 10),
+    checkedAt,
     reportDate: /^\d{4}-\d{2}-\d{2}$/.test(String(source.reportDate || "")) ? String(source.reportDate) : "",
     funds,
   };
@@ -132,6 +134,11 @@ function qdiiQuotaAmount(value) {
   if (!match) return NaN;
   const multiplier = match[2] === "亿" ? 100000000 : match[2] === "万" ? 10000 : 1;
   return Number(match[1]) * multiplier;
+}
+
+function qdiiQuotaDisplay(value) {
+  const normalized = String(value || "").trim();
+  return !normalized || normalized === "未单列" || normalized === "无额度" ? "-" : normalized;
 }
 
 function compareQdiiNumbers(left, right, direction = "desc") {
@@ -185,7 +192,7 @@ function renderQdiiQuota(plugin, element) {
   const header = root.createDiv({ cls: "fund-qdii-head fund-grid-head" });
   const heading = header.createDiv();
   heading.createEl("h1", { text: "QDII额度" });
-  heading.createEl("span", { text: cache.reportDate ? `更新于 ${cache.reportDate}` : "尚未更新" });
+  heading.createEl("span", { text: cache.checkedAt ? `更新于 ${cache.checkedAt}` : cache.reportDate ? `更新于 ${cache.reportDate}` : "尚未更新" });
   const actions = header.createDiv({ cls: "fund-qdii-actions fund-grid-actions" });
   const sourceButton = actions.createEl("button", { text: "数据来源" });
   sourceButton.addEventListener("click", () => window.open(QDII_SOURCE_URL, "_blank", "noopener,noreferrer"));
@@ -207,6 +214,9 @@ function renderQdiiQuota(plugin, element) {
     return;
   }
 
+  const heldFunds = typeof plugin.getFundRecords === "function" ? plugin.getFundRecords() : [];
+  const heldByCode = new Map(heldFunds.map((fund) => [String(fund.code || ""), fund]));
+
   for (const topic of QDII_TOPICS) {
     const funds = sortQdiiFunds(cache.funds.filter((fund) => fund.topic === topic));
     const section = root.createDiv({ cls: "fund-qdii-section" });
@@ -220,14 +230,22 @@ function renderQdiiQuota(plugin, element) {
     const body = table.createEl("tbody");
     for (const fund of funds) {
       const row = body.createEl("tr");
+      const heldFund = heldByCode.get(fund.code);
+      if (heldFund) {
+        row.addClass("is-held");
+        const definition = typeof plugin.getGroupDefinition === "function" ? plugin.getGroupDefinition(heldFund.group) : null;
+        row.style.setProperty("--fund-held-color", definition?.color || "#d5a936");
+      }
       const identity = row.createEl("td");
-      identity.createEl("a", {
+      const nameLine = identity.createDiv({ cls: "fund-qdii-name" });
+      if (heldFund) nameLine.createSpan({ cls: "fund-qdii-held-dot", attr: { title: "已持仓", "aria-label": "已持仓" } });
+      nameLine.createEl("a", {
         text: fund.name,
         attr: { href: fund.profileUrl, target: "_blank", rel: "noopener noreferrer" },
       });
       identity.createEl("small", { text: fund.code });
-      row.createEl("td", { text: fund.distributor === "未单列" ? "-" : fund.distributor });
-      row.createEl("td", { text: fund.direct === "未单列" ? "-" : fund.direct });
+      row.createEl("td", { text: qdiiQuotaDisplay(fund.distributor) });
+      row.createEl("td", { text: qdiiQuotaDisplay(fund.direct) });
       const totalFee = qdiiFeeTotal(fund);
       row.createEl("td", { cls: "fund-qdii-fee", text: Number.isFinite(totalFee) ? `${totalFee.toFixed(2)}%` : "-" });
     }
@@ -245,6 +263,7 @@ module.exports = {
   qdiiFeeTotal,
   qdiiQuotaChangeCounts,
   qdiiQuotaAmount,
+  qdiiQuotaDisplay,
   qdiiTotalQuota,
   renderQdiiQuota,
   sortQdiiFunds,
