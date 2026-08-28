@@ -154,7 +154,9 @@
 .fund-grid-identity > strong {
   display: block;
   overflow: hidden;
-  font-size: 1.03em;
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -296,6 +298,7 @@
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
+  font-size: 1em !important;
   font-variant-numeric: tabular-nums;
 }
 
@@ -311,6 +314,7 @@
   color: var(--text-muted);
   font-size: 0.9em;
   font-weight: 400;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -339,7 +343,8 @@
   overflow-wrap: anywhere;
   color: var(--text-normal);
   font-size: 1em;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.35;
   text-decoration: none;
 }
 
@@ -347,6 +352,8 @@
   display: block;
   margin-top: 3px;
   color: var(--text-muted);
+  font-size: 0.78em;
+  line-height: 1.4;
 }
 
 .fund-qdii-fee {
@@ -356,6 +363,7 @@
 .fund-qdii-table td:not(:first-child) {
   font-size: 0.98em;
   font-weight: 600;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -920,6 +928,8 @@
 .fund-overview-group-name strong,
 .fund-overview-fund-link {
   font-size: 1em;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .fund-overview-dot {
@@ -941,6 +951,8 @@
   display: block;
   margin-top: 5px;
   font-size: 0.98em;
+  font-weight: 600;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
