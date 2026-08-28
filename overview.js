@@ -174,7 +174,8 @@ function renderFundOverview(plugin, element, sourceFile) {
   const header = root.createDiv({ cls: "fund-overview-head" });
   const heading = header.createDiv();
   heading.createEl("h1", { text: "投资总览" });
-  heading.createEl("span", { text: `更新于 ${sourceFm["更新日期"] || data.summary.latestDate || "尚未更新"}` });
+  const updatedAt = sourceFm["更新日期"] || data.summary.latestDate || "";
+  heading.createEl("span", { text: updatedAt ? `更新于 ${updatedAt}` : "尚未更新" });
   const actions = header.createDiv({ cls: "fund-overview-actions" });
   const addButton = actions.createEl("button", { text: "添加基金" });
   addButton.addEventListener("click", () => plugin.openAddFundModal());

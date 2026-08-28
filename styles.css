@@ -1,12 +1,7 @@
-.fund-dashboard-note .metadata-container {
-  display: none;
-}
-
-.fund-overview-note .metadata-container {
-  display: none;
-}
-
-.fund-grid-overview-note .metadata-container {
+.fund-dashboard-note .metadata-container,
+.fund-overview-note .metadata-container,
+.fund-grid-overview-note .metadata-container,
+.fund-qdii-note .metadata-container {
   display: none;
 }
 

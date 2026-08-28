@@ -1884,6 +1884,8 @@ class HoldingCalibrationModal extends Modal {
       });
       this.close();
       new Notice("持仓已校准");
+    } catch (error) {
+      new Notice(`持仓校准失败：${error?.message || String(error)}`);
     } finally {
       this.saving = false;
     }
@@ -2064,6 +2066,7 @@ class GridStrategyModal extends Modal {
     this.fundFile = fundFile;
     this.saving = false;
     this.lookingUp = false;
+    this.lookupRequest = 0;
     this.lookupTimer = null;
     this.funds = plugin.getFundRecords().sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
     const frontmatter = fundFile ? app.metadataCache.getFileCache(fundFile)?.frontmatter || {} : {};
@@ -2120,17 +2123,17 @@ class GridStrategyModal extends Modal {
   }
 
   async lookupReference(showFailureNotice = true) {
-    if (this.lookingUp) return;
     const code = String(this.form.referenceCode || "").trim();
     if (!/^\d{6}$/.test(code)) {
       if (showFailureNotice) new Notice("请输入6位参考ETF代码");
       return;
     }
+    const requestId = ++this.lookupRequest;
     this.lookingUp = true;
     this.referenceSetting?.setDesc("正在获取ETF行情并计算中轴与间距…");
     try {
       const market = await this.plugin.gridMarketData(code);
-      if (code !== this.form.referenceCode) return;
+      if (requestId !== this.lookupRequest || code !== this.form.referenceCode) return;
       const referenceChanged = code !== this.originalReferenceCode;
       this.form.referenceName = market.name;
       this.form.currentPrice = market.currentPrice;
@@ -2154,10 +2157,11 @@ class GridStrategyModal extends Modal {
       this.form.applySuggested = false;
       this.syncMarketFields();
     } catch (error) {
+      if (requestId !== this.lookupRequest || code !== this.form.referenceCode) return;
       this.referenceSetting?.setDesc("没有获取到有效的场内ETF行情");
       if (showFailureNotice) new Notice(error?.message || String(error));
     } finally {
-      this.lookingUp = false;
+      if (requestId === this.lookupRequest) this.lookingUp = false;
     }
   }
 
@@ -2317,6 +2321,8 @@ class GridStrategyModal extends Modal {
 
   onClose() {
     if (this.lookupTimer !== null) window.clearTimeout(this.lookupTimer);
+    this.lookupRequest += 1;
+    this.lookingUp = false;
     this.contentEl.empty();
   }
 }
