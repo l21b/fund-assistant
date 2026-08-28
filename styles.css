@@ -338,7 +338,7 @@
   min-width: 0;
 }
 
-.fund-qdii-table td:first-child a {
+.fund-qdii-fund-name {
   display: block;
   overflow-wrap: anywhere;
   color: var(--text-normal);
@@ -1067,26 +1067,19 @@
 }
 
 .fund-overview-fund-link {
-  display: block;
+  display: inline;
   max-width: 100%;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
-  background: transparent;
   color: var(--text-normal);
   font-weight: 700;
   line-height: 1.35;
   overflow-wrap: anywhere;
-  text-align: left;
+  text-decoration: none;
   white-space: normal;
 }
 
 .fund-overview-fund-link:hover {
-  box-shadow: none;
-  background: transparent;
   color: var(--text-accent);
+  text-decoration: none;
 }
 
 .fund-overview-fund-meta {

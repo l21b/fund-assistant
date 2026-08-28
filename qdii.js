@@ -236,10 +236,7 @@ function renderQdiiQuota(plugin, element) {
         row.style.setProperty("--fund-held-color", definition?.color || "#d5a936");
       }
       const identity = row.createEl("td");
-      identity.createEl("a", {
-        text: fund.name,
-        attr: { href: fund.profileUrl, target: "_blank", rel: "noopener noreferrer" },
-      });
+      identity.createEl("strong", { cls: "fund-qdii-fund-name", text: fund.name });
       identity.createEl("small", { text: fund.code });
       row.createEl("td", { text: qdiiQuotaDisplay(fund.distributor) });
       row.createEl("td", { text: qdiiQuotaDisplay(fund.direct) });

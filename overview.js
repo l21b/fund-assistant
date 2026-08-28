@@ -342,8 +342,15 @@ function renderFundOverview(plugin, element, sourceFile) {
     for (const fund of sortFunds(data.funds, sortKey)) {
       const row = fundList.createDiv({ cls: "fund-overview-fund" });
       const identity = row.createDiv({ cls: "fund-overview-fund-identity" });
-      const nameButton = identity.createEl("button", { cls: "fund-overview-fund-link", text: fund.name });
-      nameButton.addEventListener("click", () => plugin.app.workspace.getLeaf(false).openFile(fund.file));
+      const nameLink = identity.createEl("a", {
+        cls: "fund-overview-fund-link",
+        text: fund.name,
+        attr: { href: "#", title: "打开基金详情" },
+      });
+      nameLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        plugin.app.workspace.getLeaf(false).openFile(fund.file);
+      });
       const meta = identity.createDiv({ cls: "fund-overview-fund-meta" });
       meta.createSpan({ text: fund.code });
       const tag = meta.createSpan({ cls: "fund-overview-fund-tag", text: fund.group });
