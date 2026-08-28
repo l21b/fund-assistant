@@ -326,12 +326,8 @@
   border-bottom: 0;
 }
 
-.fund-qdii-table tr.is-held {
-  background: color-mix(in srgb, var(--fund-held-color) 11%, transparent);
-}
-
 .fund-qdii-table tr.is-held td {
-  background: transparent !important;
+  background-color: color-mix(in srgb, var(--fund-held-color) 11%, transparent) !important;
 }
 
 .fund-qdii-table td:first-child {
