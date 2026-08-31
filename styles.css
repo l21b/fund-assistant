@@ -501,7 +501,8 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  padding-inline: 8px;
 }
 
 .fund-grid-summary-metric {

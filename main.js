@@ -107,6 +107,25 @@ const shanghaiDateTime = (date = new Date()) => {
   });
   return `${day} ${time}`;
 };
+const conciseUpdateMessage = (label, updated, failureCount) => {
+  const changed = Number(updated) > 0;
+  const failed = Math.max(0, Number(failureCount) || 0);
+  if (failed) return changed ? `${label}已更新 · ${failed}项失败` : `${label}更新失败 · ${failed}项`;
+  return changed ? `${label}已更新` : `${label}已是最新`;
+};
+const attachNoticeDetails = (notice, openDetails) => {
+  if (!notice?.noticeEl || typeof openDetails !== "function") return;
+  notice.noticeEl.addClass("fund-refresh-summary-notice");
+  notice.noticeEl.setAttribute("role", "button");
+  notice.noticeEl.setAttribute("tabindex", "0");
+  notice.noticeEl.addEventListener("click", openDetails);
+  notice.noticeEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDetails();
+    }
+  });
+};
 const money = (value) => Number(value || 0).toLocaleString("zh-CN", {
   style: "currency",
   currency: "CNY",
@@ -633,6 +652,9 @@ class FundNavRefreshPlugin extends Plugin {
       this.sessionRefreshState = "running";
       try {
         const failures = [];
+        const warnings = [];
+        const dcaItems = [];
+        let updated = 0;
         for (const [name, refresh] of [
           ["基金净值", () => this.refreshAll(false)],
           ["网格行情", () => this.refreshGridStrategies(false)],
@@ -640,13 +662,27 @@ class FundNavRefreshPlugin extends Plugin {
         ]) {
           try {
             const result = await refresh();
+            updated += Number(result?.updated) || 0;
             if (Array.isArray(result?.failures) && result.failures.length) {
-              failures.push(`${name}：${result.failures.join("；")}`);
+              failures.push(...result.failures.map((item) => `${name}：${item}`));
             }
+            if (Array.isArray(result?.warnings)) warnings.push(...result.warnings);
+            if (Array.isArray(result?.dcaItems)) dcaItems.push(...result.dcaItems);
           } catch (error) {
             failures.push(`${name}：${error?.message || String(error)}`);
           }
         }
+        const summary = failures.length
+          ? updated ? "投资数据部分更新失败" : "投资数据更新失败"
+          : updated ? "投资数据已更新" : "投资数据已是最新";
+        const hasDetails = failures.length > 0 || warnings.length > 0 || dcaItems.length > 0;
+        const notice = new Notice(`${summary}${hasDetails ? " · 点击查看" : ""}`, hasDetails ? 8000 : 4500);
+        if (hasDetails) attachNoticeDetails(notice, () => new RefreshResultModal(this.app, {
+          summary,
+          dcaItems,
+          warnings,
+          failures,
+        }).open());
         if (failures.length) console.error("[基金助手] 首次打开投资页面更新失败", failures);
       } finally {
         this.sessionRefreshState = "complete";
@@ -855,10 +891,13 @@ class FundNavRefreshPlugin extends Plugin {
       if (!/^(buy|sell)$/.test(normalizedSide) || !Number.isInteger(normalizedPosition)
         || normalizedPosition < -5 || normalizedPosition > 5 || !parseDate(normalizedDate)
         || !(normalizedPrice > 0)) throw new Error("网格触发点无效");
-      const expectedPrice = this.getGridHistory(latestFund.gridReferenceCode)
-        .find((row) => row.date === normalizedDate)?.close;
+      const livePrice = Number(latestFund.gridCurrentPrice);
+      const expectedPrice = normalizedDate === String(latestFund.gridMarketDate || "") && livePrice > 0
+        ? livePrice
+        : this.getGridHistory(latestFund.gridReferenceCode)
+          .find((row) => row.date === normalizedDate)?.close;
       if (!(expectedPrice > 0) || Math.abs(expectedPrice - normalizedPrice) > 1e-5) {
-        throw new Error("参考收盘价已经变化，请刷新后重试");
+        throw new Error("参考价格已经变化，请刷新后重试");
       }
       const alreadyRecorded = currentTrades.some((trade) => trade.cycleId === normalizedCycleId
         && trade.date === normalizedDate && trade.side === normalizedSide && trade.position === normalizedPosition);
@@ -941,11 +980,10 @@ class FundNavRefreshPlugin extends Plugin {
 
   async refreshQdiiQuota(showNotice = false) {
     if (this.qdiiRefreshing) {
-      if (showNotice) new Notice("QDII额度正在更新，请稍候");
+      if (showNotice) new Notice("QDII额度正在更新");
       return { updated: 0, unchanged: 0, failures: [] };
     }
     this.qdiiRefreshing = true;
-    if (showNotice) new Notice("正在更新QDII额度与费率…");
     try {
       const previousCache = normalizeQdiiQuotaCache(this.settings.qdiiQuota);
       const previousByCode = new Map(previousCache.funds.map((fund) => [fund.code, fund]));
@@ -987,8 +1025,7 @@ class FundNavRefreshPlugin extends Plugin {
       await this.saveSettings();
       this.scheduleRenderedRefresh();
       if (showNotice) {
-        const summary = `QDII额度：${changes.updated} 个更新，${changes.unchanged} 个已是最新，${feeFailures.length} 个失败`;
-        new Notice(feeFailures.length ? `${summary}\n${feeFailures.join("\n")}` : summary, feeFailures.length ? 10000 : 4500);
+        new Notice(conciseUpdateMessage("QDII额度", changes.updated, feeFailures.length), feeFailures.length ? 7000 : 4500);
       }
       if (feeFailures.length) console.warn("[基金助手] QDII费率", feeFailures);
       return { ...changes, failures: feeFailures };
@@ -1133,7 +1170,7 @@ class FundNavRefreshPlugin extends Plugin {
 
   async refreshGridStrategies(showNotice = false) {
     if (this.gridRefreshing) {
-      if (showNotice) new Notice("网格行情正在更新，请稍候");
+      if (showNotice) new Notice("网格行情正在更新");
       return { updated: 0, unchanged: 0, failures: [] };
     }
     const funds = this.getFundRecords().filter((fund) => fund.gridEnabled);
@@ -1142,7 +1179,6 @@ class FundNavRefreshPlugin extends Plugin {
       return { updated: 0, unchanged: 0, failures: [] };
     }
     this.gridRefreshing = true;
-    if (showNotice) new Notice("正在更新网格参考行情…");
     let updated = 0;
     let unchanged = 0;
     const failures = [];
@@ -1168,8 +1204,7 @@ class FundNavRefreshPlugin extends Plugin {
       }
       this.scheduleRenderedRefresh();
       if (showNotice) {
-        const summary = `网格行情：${updated} 个更新，${unchanged} 个已是最新，${failures.length} 个失败`;
-        new Notice(failures.length ? `${summary}\n${failures.join("\n")}` : summary, failures.length ? 10000 : 4500);
+        new Notice(conciseUpdateMessage("网格行情", updated, failures.length), failures.length ? 7000 : 4500);
       }
       if (failures.length) console.warn("[基金助手] 网格行情", failures);
       return { updated, unchanged, failures };
@@ -1515,30 +1550,26 @@ class FundNavRefreshPlugin extends Plugin {
     });
   }
 
-  async refreshAll(showStartNotice) {
+  async refreshAll(showNotice = false) {
     if (this.refreshing) {
-      if (showStartNotice) new Notice("基金数据正在更新，请稍候");
+      if (showNotice) new Notice("基金净值正在更新");
       return { updated: 0, unchanged: 0, failures: [] };
     }
     this.refreshing = true;
-    if (showStartNotice) new Notice("正在更新基金净值与定投…");
     try {
       const files = this.app.vault.getMarkdownFiles().filter((file) => this.isFundFile(file));
       if (!files.length) {
         const message = `没有在 ${FUND_FOLDER} 找到基金笔记`;
-        new Notice(message);
+        if (showNotice) new Notice(message);
         return { updated: 0, unchanged: 0, failures: [message] };
       }
 
       const histories = new Map();
       const failures = [];
       const warnings = [];
-      const updatedItems = [];
-      const unchangedItems = [];
+      const dcaItems = [];
       let updated = 0;
       let unchanged = 0;
-      let organized = 0;
-      let executionCount = 0;
 
       for (const file of files) {
         const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
@@ -1557,7 +1588,6 @@ class FundNavRefreshPlugin extends Plugin {
           const propertiesChanged = fundPropertiesNeedNormalization(frontmatter);
           if (!dataChanged && !propertiesChanged) {
             unchanged += 1;
-            unchangedItems.push(`${file.basename}：净值已是最新`);
             continue;
           }
           await this.app.fileManager.processFrontMatter(file, (target) => {
@@ -1566,47 +1596,31 @@ class FundNavRefreshPlugin extends Plugin {
           });
           if (dataChanged) {
             updated += 1;
-            const executionText = prepared.executions.length ? `，补算 ${prepared.executions.length} 期定投` : "";
-            updatedItems.push(`${file.basename}：已更新至 ${prepared.latest.date}${executionText}`);
+            if (prepared.executions.length) dcaItems.push(`${file.basename}：补算 ${prepared.executions.length} 期定投`);
           }
           else {
-            organized += 1;
             unchanged += 1;
-            unchangedItems.push(`${file.basename}：净值已是最新，已整理属性`);
           }
-          executionCount += prepared.executions.length;
         } catch (error) {
           failures.push(`${file.basename}：${error?.message || String(error)}`);
         }
       }
 
       if (updated + unchanged > 0) await this.updateLogDate();
-      const summary = `更新完成：已更新 ${updated} · 已是最新 ${unchanged} · 失败 ${failures.length}`;
-      const notice = new Notice(`${summary} · 点击查看详情`, 8000);
-      if (notice.noticeEl) {
-        notice.noticeEl.addClass("fund-refresh-summary-notice");
-        notice.noticeEl.setAttribute("role", "button");
-        notice.noticeEl.setAttribute("tabindex", "0");
-        const openDetails = () => new RefreshResultModal(this.app, {
+      const summary = conciseUpdateMessage("基金净值", updated, failures.length);
+      const hasDetails = dcaItems.length > 0 || warnings.length > 0 || failures.length > 0;
+      if (showNotice) {
+        const notice = new Notice(`${summary}${hasDetails ? " · 点击查看" : ""}`, hasDetails ? 8000 : 4500);
+        if (hasDetails) attachNoticeDetails(notice, () => new RefreshResultModal(this.app, {
           summary,
-          updatedItems,
-          unchangedItems,
+          dcaItems,
           failures,
           warnings,
-          executionCount,
-          organized,
-        }).open();
-        notice.noticeEl.addEventListener("click", openDetails);
-        notice.noticeEl.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openDetails();
-          }
-        });
+        }).open());
       }
       if (failures.length) console.error("[基金助手]", failures);
       if (warnings.length) console.warn("[基金助手]", warnings);
-      return { updated, unchanged, failures, warnings };
+      return { updated, unchanged, failures, warnings, dcaItems };
     } finally {
       this.refreshing = false;
     }
@@ -1633,29 +1647,20 @@ class RefreshResultModal extends Modal {
     const result = this.result;
     contentEl.empty();
     contentEl.addClass("fund-refresh-result-modal");
-    contentEl.createEl("h2", { text: "净值更新结果" });
+    contentEl.createEl("h2", { text: "更新详情" });
     contentEl.createEl("p", { cls: "fund-refresh-result-summary", text: result.summary });
 
-    const addSection = (title, items, emptyText) => {
+    const addSection = (title, items) => {
+      if (!items.length) return;
       const section = contentEl.createDiv({ cls: "fund-refresh-result-section" });
-      section.createEl("h3", { text: `${title} ${items.length}` });
-      if (!items.length) {
-        section.createEl("p", { cls: "fund-refresh-result-empty", text: emptyText });
-        return;
-      }
+      section.createEl("h3", { text: title });
       const list = section.createEl("ul");
       for (const item of items) list.createEl("li", { text: item });
     };
 
-    addSection("已更新", result.updatedItems, "本次没有基金需要更新");
-    addSection("已是最新", result.unchangedItems, "没有已是最新的基金");
-    addSection("失败", result.failures, "没有更新失败");
-    if (result.warnings.length) addSection("配置提醒", result.warnings, "");
-
-    const extras = [];
-    if (result.executionCount) extras.push(`补算 ${result.executionCount} 期定投`);
-    if (result.organized) extras.push(`整理 ${result.organized} 只基金属性`);
-    if (extras.length) contentEl.createEl("p", { cls: "fund-refresh-result-extra", text: extras.join(" · ") });
+    addSection("定投补算", Array.isArray(result.dcaItems) ? result.dcaItems : []);
+    addSection("需要注意", Array.isArray(result.warnings) ? result.warnings : []);
+    addSection("更新失败", Array.isArray(result.failures) ? result.failures : []);
   }
 
   onClose() {
@@ -2607,6 +2612,7 @@ class FundNavRefreshSettingTab extends PluginSettingTab {
 }
 
 FundNavRefreshPlugin.testables = {
+  conciseUpdateMessage,
   createFundNoteContent,
   createGridOverviewNoteContent,
   createOverviewNoteContent,

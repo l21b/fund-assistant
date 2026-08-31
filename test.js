@@ -30,6 +30,7 @@ const {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridChartOfficialPoints,
   gridDateTickIndexes,
   gridDecimalPlaces,
   gridFixedDecimal,
@@ -41,11 +42,13 @@ const {
   gridPendingAction,
   gridPendingCloseAction,
   gridPositionLabel,
+  gridSignedDecimal,
   gridQuoteIsOfficialClose,
   parseGridKlinePayload,
   parseGridQuoteText,
 } = require("./grid");
 const {
+  conciseUpdateMessage,
   createFundNoteContent,
   createGridOverviewNoteContent,
   createOverviewNoteContent,
@@ -77,6 +80,10 @@ const {
 
 assert.equal(fixedDecimal(1.233, 4), "1.2330");
 assert.equal(fixedDecimal(1.2334, 4), "1.2334");
+assert.equal(conciseUpdateMessage("基金净值", 0, 0), "基金净值已是最新");
+assert.equal(conciseUpdateMessage("网格行情", 3, 0), "网格行情已更新");
+assert.equal(conciseUpdateMessage("QDII额度", 0, 2), "QDII额度更新失败 · 2项");
+assert.equal(conciseUpdateMessage("基金净值", 3, 1), "基金净值已更新 · 1项失败");
 assert.match(createQdiiQuotaNoteContent(), /```fund-qdii-quota/);
 assert.deepEqual(quotaChannels("10元", "—"), { distributor: "10元", direct: "未单列" });
 assert.deepEqual(
@@ -180,6 +187,10 @@ assert.equal(gridDecimalPlaces(1.82, 4), 2);
 assert.equal(gridDecimalPlaces(1.8, 4), 1);
 assert.equal(gridDecimalPlaces(3, 2), 0);
 assert.equal(gridFixedDecimal(1.8, 2), "1.80");
+assert.equal(gridSignedDecimal(0.825 - 0.819, 3), "+0.006");
+assert.equal(gridSignedDecimal(1.72 - 1.82, 2), "-0.10");
+assert.equal(gridSignedDecimal(0, 3), "0.000");
+assert.equal(gridSignedDecimal(-0.0001, 3), "0.000");
 assert.deepEqual(gridDateTickIndexes(40), [0, 10, 20, 29, 39]);
 assert.deepEqual(gridDateTickIndexes(3), [0, 1, 2]);
 assert.deepEqual(gridDateTickIndexes(1), [0]);
@@ -194,6 +205,18 @@ assert.equal(gridMarkerTooltipText({
   position: "中轴",
   price: 1.8,
 }), "2026-08-15\n中轴\n1.8");
+assert.equal(gridMarkerTooltipText({
+  date: "2026-08-24",
+  position: "买1",
+  price: 1.641,
+  closePrice: 1.6744,
+}), "2026-08-24\n买1\n记录价 1.641\n收盘价 1.6744");
+assert.equal(gridMarkerTooltipText({
+  date: "2026-08-24",
+  position: "买1",
+  price: 1.641,
+  closePrice: 1.641,
+}), "2026-08-24\n买1\n1.641");
 assert.notEqual(
   gridCycleId("518880", "2026-08-26", 100, 5),
   gridCycleId("510310", "2026-08-26", 100, 5),
@@ -227,6 +250,9 @@ assert.equal(chartModel.levels.find((level) => level.position === 0).price, 100)
 assert.equal(chartModel.levels.find((level) => level.position === -5).price, 75);
 assert.equal(chartModel.points.at(-1).close, 101);
 assert.equal(chartModel.points.at(-1).date, "2026-08-27");
+assert.deepEqual(gridChartOfficialPoints(chartModel.points, true, "2026-08-27"), chartModel.points.slice(0, -1));
+assert.deepEqual(gridChartOfficialPoints(chartModel.points, true, "2026-08-28"), chartModel.points);
+assert.deepEqual(gridChartOfficialPoints(chartModel.points, false, "2026-08-27"), chartModel.points);
 assert.equal(buildGridChartModel([], 0, 5, 100, "2026-08-27"), null);
 const triggerPoints = buildGridTriggerPoints([
   { date: "2026-08-25", close: 100 },
@@ -919,6 +945,35 @@ assert.equal(buildOverviewData([{
   const buyRecord = `2026-08-27 · 买入 · 买2 · 90 · 周期 ${cycleA}`;
   assert.deepEqual(executionFrontmatter["网格已执行"], ["buy-2"]);
   assert.deepEqual(executionFrontmatter["网格交易记录"], [buyRecord]);
+
+  executionFund.gridCurrentPrice = 85;
+  executionFund.gridMarketDate = "2026-08-30";
+  await Plugin.prototype.toggleGridExecution.call(executionPlugin, {
+    fund: executionFund,
+    mode: "record-trade",
+    side: "buy",
+    levelPrice: 85,
+    tradePosition: -3,
+    tradeDate: "2026-08-30",
+    tradeCycleId: cycleA,
+  });
+  const liveBuyRecord = `2026-08-30 · 买入 · 买3 · 85 · 周期 ${cycleA}`;
+  assert.deepEqual(executionFrontmatter["网格已执行"], ["buy-2", "buy-3"]);
+  assert.equal(executionFrontmatter["网格交易记录"].includes(liveBuyRecord), true);
+  await Plugin.prototype.toggleGridExecution.call(executionPlugin, {
+    fund: executionFund,
+    mode: "cancel-trade",
+    side: "buy",
+    levelPrice: 85,
+    tradeIndex: executionFrontmatter["网格交易记录"].indexOf(liveBuyRecord),
+    tradeRaw: liveBuyRecord,
+    tradePosition: -3,
+    tradeDate: "2026-08-30",
+    tradeCycleId: cycleA,
+  });
+  assert.deepEqual(executionFrontmatter["网格已执行"], ["buy-2"]);
+  executionFund.gridCurrentPrice = 90;
+  executionFund.gridMarketDate = "2026-08-27";
 
   await Plugin.prototype.toggleGridExecution.call(executionPlugin, {
     fund: executionFund,

@@ -17,6 +17,13 @@ const gridFixedDecimal = (value, digits = 0) => gridNumber(value).toLocaleString
   minimumFractionDigits: digits,
   maximumFractionDigits: digits,
 });
+const gridSignedDecimal = (value, digits = 0) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  const rounded = Number(number.toFixed(digits));
+  const normalized = rounded === 0 ? 0 : rounded;
+  return `${normalized > 0 ? "+" : ""}${gridFixedDecimal(normalized, digits)}`;
+};
 
 function gridDateTickIndexes(pointCount, maxTicks = 5) {
   const count = Math.max(0, Math.floor(Number(pointCount) || 0));
@@ -29,8 +36,13 @@ function gridDateTickIndexes(pointCount, maxTicks = 5) {
   )))];
 }
 
-function gridMarkerTooltipText({ date, position, price }) {
-  return `${date}\n${position}\n${gridDecimal(price)}`;
+function gridMarkerTooltipText({ date, position, price, closePrice }) {
+  const recordedPrice = Number(price);
+  const officialClose = Number(closePrice);
+  if (recordedPrice > 0 && officialClose > 0 && Math.abs(recordedPrice - officialClose) > 1e-6) {
+    return `${date}\n${position}\n记录价 ${gridDecimal(recordedPrice)}\n收盘价 ${gridDecimal(officialClose)}`;
+  }
+  return `${date}\n${position}\n${gridDecimal(recordedPrice)}`;
 }
 
 function gridMarketSymbol(code) {
@@ -299,6 +311,13 @@ function buildGridChartModel(rows, executionAxis, spacingPercent, currentPrice, 
   };
 }
 
+function gridChartOfficialPoints(points, provisional, currentDate = "") {
+  const normalized = Array.isArray(points) ? points : [];
+  return provisional && normalized.at(-1)?.date === String(currentDate || "")
+    ? normalized.slice(0, -1)
+    : normalized;
+}
+
 function buildGridTriggerPoints(points, executionAxis, spacingPercent, visibleLevels = GRID_VISIBLE_LEVELS) {
   const axis = Number(executionAxis);
   const spacing = Number(spacingPercent);
@@ -527,7 +546,7 @@ function renderGridOverview(plugin, element) {
   const tabs = root.createDiv({ cls: "fund-grid-tabs", attr: { role: "tablist", "aria-label": "选择网格基金" } });
   for (const strategy of strategies) {
     const actionSide = strategy.action?.side || "";
-    const actionPrefix = strategy.provisional ? "临时" : "今日";
+    const actionPrefix = strategy.provisional ? "实时" : "今日";
     const active = strategy.fund.code === selectedStrategy.fund.code;
     const tab = tabs.createEl("button", {
       cls: `fund-grid-tab${active ? " is-active" : ""}${actionSide ? ` has-action is-${actionSide}` : ""}`,
@@ -605,10 +624,22 @@ function renderGridOverview(plugin, element) {
     };
     addSummary(
       "建议",
-      action ? `${strategy.provisional ? "临时" : "今日"}${actionSide === "buy" ? "买入" : "卖出"}` : "无需操作",
+      action ? `${strategy.provisional ? "实时" : "今日"}${actionSide === "buy" ? "买入" : "卖出"}` : "无需操作",
       action ? actionSide === "buy" ? "negative" : "positive" : "",
     );
-    addSummary("参考现价", strategy.currentPrice > 0 ? gridDecimal(strategy.currentPrice) : "--");
+    const priceDigits = Math.max(
+      gridDecimalPlaces(strategy.currentPrice, 4),
+      gridDecimalPlaces(strategy.executionAxis, 4),
+    );
+    const axisDistance = strategy.currentPrice > 0 && strategy.executionAxis > 0
+      ? strategy.currentPrice - strategy.executionAxis
+      : NaN;
+    addPairedSummary(
+      "参考现价",
+      strategy.currentPrice > 0 ? gridDecimal(strategy.currentPrice) : "--",
+      "距离中轴",
+      gridSignedDecimal(axisDistance, priceDigits),
+    );
     const axisDigits = Math.max(
       gridDecimalPlaces(strategy.executionAxis, 4),
       gridDecimalPlaces(strategy.suggestedAxis, 4),
@@ -638,8 +669,8 @@ function renderGridOverview(plugin, element) {
       strategy.rows,
       strategy.executionAxis,
       strategy.spacing,
-      0,
-      "",
+      strategy.currentPrice,
+      strategy.fund.gridMarketDate,
     );
     if (!model) {
       chart.createDiv({ cls: "fund-grid-chart-empty", text: "更新行情后显示网格图" });
@@ -718,13 +749,18 @@ function renderGridOverview(plugin, element) {
       appendSvg("circle", { cx: xOf(model.points.length - 1), cy: yOf(latest.close), r: 5.5, class: "fund-grid-chart-current" });
     }
     const pointIndexByDate = new Map(model.points.map((point, index) => [point.date, index]));
+    const officialCloseByDate = new Map(strategy.rows.map((point) => [point.date, point.close]));
     const markerKey = (cycleId, date, side, position) => `${cycleId}|${date}|${side}|${position}`;
     const markers = new Map();
-    for (const trigger of buildGridTriggerPoints(model.points, strategy.executionAxis, strategy.spacing)) {
+    for (const trigger of buildGridTriggerPoints(
+      gridChartOfficialPoints(model.points, strategy.provisional, strategy.fund.gridMarketDate),
+      strategy.executionAxis,
+      strategy.spacing,
+    )) {
       const key = markerKey(strategy.cycleId, trigger.date, trigger.side, trigger.position);
       markers.set(key, { ...trigger, cycleId: strategy.cycleId, record: null, recordIndex: -1 });
     }
-    if (!strategy.provisional && action && Number.isFinite(actionPrice) && Number.isInteger(actionPosition)) {
+    if (action && Number.isFinite(actionPrice) && Number.isInteger(actionPosition)) {
       const key = markerKey(strategy.cycleId, strategy.fund.gridMarketDate, actionSide, actionPosition);
       if (!markers.has(key)) {
         markers.set(key, {
@@ -776,6 +812,7 @@ function renderGridOverview(plugin, element) {
         date: markerData.date,
         position: positionLabel,
         price: markerData.price,
+        closePrice: recorded ? officialCloseByDate.get(markerData.date) : null,
       });
       marker.addEventListener("pointerenter", (event) => showMarkerTooltip(tooltipText, event.clientX, event.clientY));
       marker.addEventListener("pointermove", (event) => positionMarkerTooltip(event.clientX, event.clientY));
@@ -829,6 +866,7 @@ module.exports = {
   calculateSuggestedSpacing,
   evaluateGridAxisReview,
   gridCycleId,
+  gridChartOfficialPoints,
   gridDateTickIndexes,
   gridDecimalPlaces,
   gridFixedDecimal,
@@ -840,6 +878,7 @@ module.exports = {
   gridPendingAction,
   gridPendingCloseAction,
   gridPositionLabel,
+  gridSignedDecimal,
   parseGridKlinePayload,
   parseGridQuoteText,
   gridQuoteIsOfficialClose,
