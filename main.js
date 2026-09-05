@@ -1492,7 +1492,9 @@ class FundNavRefreshPlugin extends Plugin {
       result.executions = dueNavPoints(history, plan);
       for (const point of result.executions) {
         const netAmount = plan.amount / (1 + plan.feeRate / 100);
-        const acquiredShares = netAmount / point.nav;
+        const rawShares = netAmount / point.nav;
+        // Round each new subscription, not the existing total holding.
+        const acquiredShares = Math.round((rawShares + Number.EPSILON * Math.abs(rawShares)) * 100) / 100;
         shares += acquiredShares;
         cost += plan.amount;
         result.lastExecutionShares = acquiredShares;

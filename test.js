@@ -731,12 +731,48 @@ const feeDca = Plugin.prototype.prepareFund.call(context, {
   "定投开始日期": "2026-08-17",
   "最后定投日期": "2026-08-10",
 }, points);
-assert.ok(Math.abs(feeDca.shares - (100 + 100 / 1.01 / 10)) < 1e-12);
+assert.equal(feeDca.shares, 109.9);
 const feeDcaChanges = Plugin.prototype.buildChanges.call(context, {}, feeDca);
-assert.equal(feeDcaChanges["最近定投份额"], 9.90099009901);
-assert.equal(feeDcaChanges["持仓份额"], 109.90099009901);
-assert.equal(feeDcaChanges["持有金额"], 1099.01);
-assert.equal(feeDcaChanges["持有收益"], 799.01);
+assert.equal(feeDcaChanges["最近定投份额"], 9.9);
+assert.equal(feeDcaChanges["持仓份额"], 109.9);
+assert.equal(feeDcaChanges["持有金额"], 1099);
+assert.equal(feeDcaChanges["持有收益"], 799);
+
+// All funds use two-decimal new subscription shares; the workflow stays automatic.
+const precisionHistory = [
+  { date: "2026-09-03", nav: 3.311, change: 0 },
+  { date: "2026-09-04", nav: 3.3417, change: 0.93 },
+];
+const precisionFm = {
+  "持仓份额": 100, "持仓总成本": 200, "定投启用": true,
+  "定投金额": 100, "手续费率": 0.06, "定投频率": "日", "定投日期": "每个交易日",
+  "定投开始日期": "2026-09-03", "最后定投日期": "2026-09-02",
+};
+const precisionRefresh = (fm, history) => ({
+  ...fm, ...Plugin.prototype.buildChanges.call(context, fm, Plugin.prototype.prepareFund.call(context, fm, history)),
+});
+for (const code of ["000216", "019172", "019547", "017641", "096001", "999999"]) {
+  const fm = { ...precisionFm, "基金编号": code };
+  const first = precisionRefresh(fm, precisionHistory.slice(0, 1));
+  assert.equal(first["最近定投份额"], 30.18, `${code}: round per subscription`);
+  assert.equal(first["持仓份额"], 130.18);
+  assert.equal(first["持仓总成本"], 300);
+  const batch = precisionRefresh(fm, precisionHistory);
+  assert.equal(batch["持仓份额"], 160.09);
+  assert.equal(batch["最近定投份额"], 29.91);
+  assert.equal(batch["持仓总成本"], 400);
+  assert.deepEqual(precisionRefresh(first, precisionHistory), batch, "daily and batch execution agree");
+  assert.deepEqual(precisionRefresh(batch, precisionHistory), batch, "same NAV must not add twice");
+}
+assert.equal(precisionRefresh({ ...precisionFm, "手续费率": 0, "定投金额": 100.5 }, [
+  { date: "2026-09-03", nav: 100, change: 0 },
+])["最近定投份额"], 1.01, "half-up rounding at 1.005");
+const legacyFractionalShares = 1796.649999201051;
+const unchangedFraction = precisionRefresh({ ...precisionFm, "持仓份额": legacyFractionalShares,
+  "最后定投日期": "2026-09-04" }, precisionHistory);
+assert.equal(unchangedFraction["持仓份额"], legacyFractionalShares, "do not rewrite historical shares");
+assert.equal(precisionRefresh({ ...precisionFm, "持仓份额": legacyFractionalShares }, precisionHistory.slice(0, 1))["持仓份额"],
+  Number((legacyFractionalShares + 30.18).toFixed(12)), "new rounding must not round the old holding");
 
 assert.ok(Math.abs(dailyHoldingProfit({
   "持仓份额": 100,
@@ -833,6 +869,28 @@ const overview = buildOverviewData([
   { name: "标普B", group: "标普500", amount: 1100, cost: 1000, profit: 100, navDate: "2026-08-26", dailyProfit: 8 },
 ], "2026-08-26");
 assert.equal(overview.summary.totalAmount, 3180);
+const groupDcaRecords = [
+  { name: "日投A", group: "标普500", amount: 100, cost: 90, dailyProfit: 1, navDate: "2026-08-26", dcaEnabled: true, dcaAmount: 100, dcaFrequency: "日" },
+  { name: "日投B", group: "标普500", amount: 200, cost: 180, dailyProfit: 2, navDate: "2026-08-26", dcaEnabled: true, dcaAmount: "10", dcaFrequency: "daily" },
+  { name: "周投", group: "标普500", amount: 50, cost: 40, dcaEnabled: true, dcaAmount: 200, dcaFrequency: "周" },
+  { name: "月投", group: "标普500", amount: 60, cost: 50, dcaEnabled: true, dcaAmount: 500, dcaFrequency: "月" },
+  { name: "已停用", group: "标普500", dcaEnabled: false, dcaAmount: 999, dcaFrequency: "日" },
+  { name: "零金额", group: "标普500", dcaEnabled: true, dcaAmount: 0, dcaFrequency: "日" },
+  { name: "无效金额", group: "标普500", dcaEnabled: true, dcaAmount: "bad", dcaFrequency: "日" },
+  { name: "负金额", group: "标普500", dcaEnabled: true, dcaAmount: -10, dcaFrequency: "日" },
+  { name: "无定投", group: "黄金", amount: 300, cost: 300 },
+];
+const groupDcaOverview = buildOverviewData(groupDcaRecords, "2026-08-26");
+assert.deepEqual(groupDcaOverview.groups.find((group) => group.name === "标普500").dcaTotals, { 日: 110, 周: 200, 月: 500 });
+assert.deepEqual(groupDcaOverview.groups.find((group) => group.name === "黄金").dcaTotals, {});
+const withoutGroupDca = buildOverviewData(groupDcaRecords.map((fund) => ({ ...fund, dcaEnabled: false })), "2026-08-26");
+assert.deepEqual(groupDcaOverview.summary, withoutGroupDca.summary, "DCA display must not affect asset/return totals");
+for (const group of groupDcaOverview.groups) {
+  const original = withoutGroupDca.groups.find((item) => item.name === group.name);
+  for (const key of ["amount", "cost", "profit", "profitRate", "share", "deviation"]) assert.equal(group[key], original[key]);
+}
+const fractionalDca = buildOverviewData([0.1, 0.2].map((value) => ({ name: String(value), group: "黄金", dcaEnabled: true, dcaAmount: value, dcaFrequency: "日" })), "2026-08-26");
+assert.equal(fractionalDca.groups.find((group) => group.name === "黄金").dcaTotals.日, 0.3);
 assert.equal(overview.funds.find((fund) => fund.name === "黄金A").gridEnabled, true);
 assert.equal(overview.funds.find((fund) => fund.name === "黄金A").change, -0.81);
 assert.equal(overview.summary.totalCost, 2800);

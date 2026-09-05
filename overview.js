@@ -83,6 +83,13 @@ function buildOverviewData(records, today, configuredGroups = null) {
     const amount = items.reduce((sum, fund) => sum + numberOf(fund.amount), 0);
     const cost = items.reduce((sum, fund) => sum + numberOf(fund.cost), 0);
     const profit = items.reduce((sum, fund) => sum + numberOf(fund.profit), 0);
+    const dcaCents = {};
+    for (const fund of items) {
+      if (fund.dcaEnabled !== true || numberOf(fund.dcaAmount) <= 0) continue;
+      const frequency = { 日: "日", daily: "日", 周: "周", weekly: "周", 月: "月", monthly: "月" }[fund.dcaFrequency] || "期";
+      dcaCents[frequency] = (dcaCents[frequency] || 0) + Math.round(numberOf(fund.dcaAmount) * 100);
+    }
+    const dcaTotals = Object.fromEntries(Object.entries(dcaCents).map(([frequency, cents]) => [frequency, cents / 100]));
     const share = totalAmount ? amount / totalAmount * 100 : 0;
     return {
       ...definition,
@@ -92,6 +99,7 @@ function buildOverviewData(records, today, configuredGroups = null) {
       profitRate: cost ? profit / cost * 100 : 0,
       share,
       deviation: definition.target === null ? null : share - definition.target,
+      dcaTotals,
       funds: items,
     };
   }).filter((group) => group.name === "未分类"
@@ -163,6 +171,8 @@ function renderFundOverview(plugin, element, sourceFile) {
       change: hasFiniteValue(frontmatter["涨跌幅"]) ? Number(frontmatter["涨跌幅"]) : null,
       navDate: String(frontmatter["净值日期"] || ""),
       dcaEnabled: frontmatter["定投启用"] === true,
+      dcaAmount: numberOf(frontmatter["定投金额"]),
+      dcaFrequency: String(frontmatter["定投频率"] || ""),
       gridEnabled: frontmatter["网格启用"] === true,
     };
   });
@@ -254,6 +264,9 @@ function renderFundOverview(plugin, element, sourceFile) {
     const name = groupMain.createDiv({ cls: "fund-overview-group-name" });
     name.createSpan({ cls: "fund-overview-dot" });
     name.createEl("strong", { text: group.name });
+    const dcaParts = ["日", "周", "月", "期"].filter((frequency) => group.dcaTotals[frequency] > 0)
+      .map((frequency) => `${group.dcaTotals[frequency].toLocaleString("zh-CN", { maximumFractionDigits: 2 })}元/${frequency}`);
+    if (dcaParts.length) groupMain.createSpan({ cls: "fund-overview-group-dca", text: `定投 ${dcaParts.join(" · ")}` });
     const metrics = row.createDiv({ cls: "fund-overview-group-metrics" });
     const addMetric = (label, value, tone = "") => {
       const item = metrics.createDiv();
@@ -343,7 +356,8 @@ function renderFundOverview(plugin, element, sourceFile) {
     for (const fund of sortFunds(data.funds, sortKey)) {
       const row = fundList.createDiv({ cls: "fund-overview-fund" });
       const identity = row.createDiv({ cls: "fund-overview-fund-identity" });
-      const nameLink = identity.createEl("a", {
+      const fundHead = identity.createDiv({ cls: "fund-overview-fund-head" });
+      const nameLink = fundHead.createEl("a", {
         cls: "fund-overview-fund-link",
         text: fund.name,
         attr: { href: "#", title: "打开基金详情" },
@@ -352,6 +366,11 @@ function renderFundOverview(plugin, element, sourceFile) {
         event.preventDefault();
         plugin.app.workspace.getLeaf(false).openFile(fund.file);
       });
+      if (fund.dcaEnabled && fund.dcaAmount > 0) {
+        const frequency = { 日: "日", daily: "日", 周: "周", weekly: "周", 月: "月", monthly: "月" }[fund.dcaFrequency] || "期";
+        fundHead.createSpan({ cls: "fund-overview-group-dca fund-overview-fund-dca",
+          text: `定投 ${fund.dcaAmount.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}元/${frequency}` });
+      }
       const meta = identity.createDiv({ cls: "fund-overview-fund-meta" });
       meta.createSpan({ text: fund.code });
       const tag = meta.createSpan({ cls: "fund-overview-fund-tag", text: fund.group });
