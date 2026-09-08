@@ -1,6 +1,8 @@
 const hasFiniteValue = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 
 function dailyHoldingProfit(frontmatter) {
+  // A manual snapshot does not tell us how many shares were acquired on its date.
+  if (frontmatter["持仓校准日期"] && String(frontmatter["净值日期"] || "") <= String(frontmatter["持仓校准日期"])) return null;
   const rawShares = frontmatter["持仓份额"];
   const rawLatestNav = frontmatter["最新净值"];
   const rawPreviousNav = frontmatter["昨日净值"];

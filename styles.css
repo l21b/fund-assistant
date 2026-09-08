@@ -1413,3 +1413,7 @@
   color: var(--text-muted);
   margin: 0;
 }
+.fund-dca-records { margin-top: 12px; }
+.fund-dca-records summary { cursor: pointer; color: var(--text-muted); }
+.fund-dca-records-scroll { overflow: auto; max-height: 360px; }
+.fund-dca-records table { width: 100%; font-size: var(--font-smallest); white-space: nowrap; }

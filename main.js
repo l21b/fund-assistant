@@ -8,6 +8,7 @@ const {
 } = require("obsidian");
 const { FUND_GROUPS, groupColor } = require("./constants");
 const { dailyHoldingProfit, totalHoldingCost } = require("./fund-math");
+const { validDcaSchedule, dcaToday, dcaNextDate, dcaDueDates, readDcaState, saveDcaPlanChange, prepareDca, calibrateDca } = require("./dca");
 const { renderFundOverview } = require("./overview");
 const {
   QDII_SOURCE_URL,
@@ -77,6 +78,11 @@ const FUND_PROPERTY_ORDER = [
   "定投开始日期",
   "最后定投日期",
   "最近定投份额",
+  "定投记录版本",
+  "定投补算基准日期",
+  "定投计划历史",
+  "定投记录",
+  "持仓校准日期",
   "cssclasses",
 ];
 const OBSOLETE_FUND_PROPERTIES = new Set(["持仓成本", "持仓基准日期", "网格基准净值", "每格金额"]);
@@ -311,11 +317,10 @@ function effectiveDcaStartDate(initiallyEnabled, enabled, storedDate, today) {
 
 function validDcaSettings(enabled, amount, feeRate, startDate, frequency, schedule) {
   if (!enabled) return true;
-  return Number.isFinite(Number(amount)) && Number(amount) > 0
+  return Number.isFinite(Number(amount)) && Number(amount) >= 0.01
     && Number.isFinite(Number(feeRate)) && Number(feeRate) >= 0 && Number(feeRate) <= 10
     && Boolean(parseDate(startDate))
-    && (frequency === "daily" || (frequency === "weekly" && schedule >= 1 && schedule <= 5)
-      || (frequency === "monthly" && schedule >= 1 && schedule <= 28));
+    && validDcaSchedule(frequency, schedule);
 }
 
 function positionFromSnapshot(sharesValue, amountValue, profitValue) {
@@ -458,55 +463,9 @@ function firstPointOnOrAfter(points, start) {
 }
 
 function dueNavPoints(points, plan) {
-  const startDate = parseDate(plan.startDate);
-  if (!startDate || !points.length) return [];
-  const latestDate = points.at(-1).date;
-  const lastDate = plan.lastDate || "";
-  const eligible = (point) => point.date >= plan.startDate && point.date > lastDate;
-
-  if (plan.frequency === "daily") {
-    return points.filter((point) => {
-      const day = parseDate(point.date)?.getUTCDay();
-      return eligible(point) && day >= 1 && day <= 5;
-    });
-  }
-
-  const selected = [];
-  const usedDates = new Set();
-  if (plan.frequency === "weekly") {
-    let cursor = new Date(startDate);
-    while (cursor.getUTCDay() !== plan.schedule) cursor = addDays(cursor, 1);
-    while (dateKey(cursor) <= latestDate) {
-      const due = dateKey(cursor);
-      const point = firstPointOnOrAfter(points, due);
-      if (point && eligible(point) && !usedDates.has(point.date)) {
-        selected.push(point);
-        usedDates.add(point.date);
-      }
-      cursor = addDays(cursor, 7);
-    }
-  } else if (plan.frequency === "monthly") {
-    let year = startDate.getUTCFullYear();
-    let month = startDate.getUTCMonth();
-    while (true) {
-      const dueDate = new Date(Date.UTC(year, month, plan.schedule));
-      const due = dateKey(dueDate);
-      if (due > latestDate) break;
-      if (due >= plan.startDate) {
-        const point = firstPointOnOrAfter(points, due);
-        if (point && eligible(point) && !usedDates.has(point.date)) {
-          selected.push(point);
-          usedDates.add(point.date);
-        }
-      }
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year += 1;
-      }
-    }
-  }
-  return selected;
+  if (!parseDate(plan.startDate) || !points.length || !validDcaSchedule(plan.frequency, plan.schedule)) return [];
+  return dcaDueDates(plan, points).map((date) => firstPointOnOrAfter(points, date))
+    .filter((point) => point && point.date > (plan.lastDate || ""));
 }
 
 class FundNavRefreshPlugin extends Plugin {
@@ -1417,7 +1376,34 @@ class FundNavRefreshPlugin extends Plugin {
     addMetric(dcaGrid, "每期金额", money(fm["定投金额"]));
     addMetric(dcaGrid, "定投频率", enabled ? `${fm["定投频率"] || "--"} · ${fm["定投日期"] || "--"}` : "--");
     addMetric(dcaGrid, "费率", `${decimal(fm["手续费率"], 4)}%`);
-    addMetric(dcaGrid, "最近确认", String(fm["最后定投日期"] || "尚未执行"));
+    addMetric(dcaGrid, "最近入账", String(fm["最后定投日期"] || "尚未执行"));
+    if (fm["定投记录版本"] !== undefined) {
+      try {
+        const state = readDcaState(fm);
+        const pending = state.plans.at(-1);
+        if (pending.startDate > dcaToday()) {
+          dcaCard.createEl("p", { text: `${pending.startDate} 起${pending.enabled ? "按新计划执行" : "暂停定投"}，此前期数按原计划补算。` });
+        }
+        const details = dcaCard.createEl("details", { cls: "fund-dca-records" });
+        details.createEl("summary", { text: `自动定投记录 · ${state.records.length} 期` });
+        if (state.baseline) details.createEl("p", { text: `${state.baseline} 及以前已包含在持仓基准中，不重复补算。` });
+        if (state.records.length) {
+          const table = details.createDiv({ cls: "fund-dca-records-scroll" }).createEl("table");
+          const head = table.createEl("thead").createEl("tr");
+          for (const label of ["计划日期", "净值日期", "金额", "费率", "净值", "新增份额"]) head.createEl("th", { text: label });
+          const body = table.createEl("tbody");
+          for (const record of state.records.slice().reverse()) {
+            const row = body.createEl("tr");
+            for (const value of [record.dueDate, record.navDate, money(record.amount),
+              `${decimal(record.feeRate, 4)}%`, decimal(record.nav, 6), decimal(record.shares, 2)]) {
+              row.createEl("td", { text: value });
+            }
+          }
+        } else details.createEl("p", { text: "尚无新记录，已有持仓不会重新入账。" });
+      } catch (error) {
+        dcaCard.createEl("p", { text: error.message });
+      }
+    }
   }
 
   async fundSource(code) {
@@ -1448,6 +1434,7 @@ class FundNavRefreshPlugin extends Plugin {
     }
     const points = normalizeNavHistory(raw);
     if (!points.length) throw new Error("历史净值为空");
+    if (points.at(-1).date > dcaToday()) throw new Error("历史净值包含未来日期，本次未更新");
     return points;
   }
 
@@ -1463,45 +1450,19 @@ class FundNavRefreshPlugin extends Plugin {
       return result;
     }
 
-    if (frontmatter["定投启用"] === true && Number(frontmatter["定投金额"]) > 0) {
-      const frequency = FREQUENCY_VALUES[String(frontmatter["定投频率"])] || String(frontmatter["定投频率"] || "");
-      const scheduleRaw = frontmatter["定投日期"];
-      const schedule = frequency === "weekly"
-        ? WEEKDAY_VALUES[String(scheduleRaw)] || Number(scheduleRaw)
-        : frequency === "monthly"
-          ? Number(scheduleRaw)
-          : 0;
-      const plan = {
-        amount: Number(frontmatter["定投金额"]),
-        feeRate: Number(frontmatter["手续费率"] || 0),
-        frequency,
-        schedule,
-        startDate: String(frontmatter["定投开始日期"] || ""),
-        lastDate: String(frontmatter["最后定投日期"] || ""),
-      };
-      const validPlan = parseDate(plan.startDate)
-        && ["daily", "weekly", "monthly"].includes(plan.frequency)
-        && plan.feeRate >= 0 && plan.feeRate <= 10
-        && (plan.frequency === "daily" || (plan.frequency === "weekly" && plan.schedule >= 1 && plan.schedule <= 5)
-          || (plan.frequency === "monthly" && plan.schedule >= 1 && plan.schedule <= 28));
-      if (!validPlan) {
-        result.planWarning = "定投设置不完整";
-        return result;
+    if (frontmatter["定投启用"] === true || frontmatter["定投记录版本"] !== undefined) {
+      try {
+        const dca = prepareDca(frontmatter, history);
+        shares += dca.added.reduce((sum, row) => sum + row.shares, 0);
+        cost += dca.added.reduce((sum, row) => sum + row.amount, 0);
+        if (!Number.isFinite(shares) || !Number.isFinite(cost)) throw new Error("定投持仓超出有效范围");
+        result.executions = dca.added;
+        result.dcaChanges = dca.changes;
+        result.shares = shares;
+        result.cost = cost;
+      } catch (error) {
+        result.planWarning = error.message;
       }
-
-      result.executions = dueNavPoints(history, plan);
-      for (const point of result.executions) {
-        const netAmount = plan.amount / (1 + plan.feeRate / 100);
-        const rawShares = netAmount / point.nav;
-        // Round each new subscription, not the existing total holding.
-        const acquiredShares = Math.round((rawShares + Number.EPSILON * Math.abs(rawShares)) * 100) / 100;
-        shares += acquiredShares;
-        cost += plan.amount;
-        result.lastExecutionShares = acquiredShares;
-      }
-      result.shares = shares;
-      result.cost = cost;
-      result.plan = plan;
     }
     return result;
   }
@@ -1532,11 +1493,7 @@ class FundNavRefreshPlugin extends Plugin {
         "持有收益率": prepared.cost ? round(profit / prepared.cost * 100, 2) : 0,
       });
     }
-    if (prepared.executions.length && prepared.plan) {
-      const last = prepared.executions.at(-1);
-      changes["最后定投日期"] = last.date;
-      changes["最近定投份额"] = round(prepared.lastExecutionShares, 12);
-    }
+    if (prepared.dcaChanges) Object.assign(changes, prepared.dcaChanges);
     return changes;
   }
 
@@ -1582,20 +1539,22 @@ class FundNavRefreshPlugin extends Plugin {
         }
         try {
           if (!histories.has(code)) histories.set(code, await this.navHistory(code));
-          const prepared = this.prepareFund(frontmatter, histories.get(code));
-          if (prepared.positionWarning) warnings.push(`${file.basename}：${prepared.positionWarning}`);
-          if (prepared.planWarning) warnings.push(`${file.basename}：${prepared.planWarning}`);
-          const changes = this.buildChanges(frontmatter, prepared);
-          const dataChanged = this.hasChanges(frontmatter, changes);
-          const propertiesChanged = fundPropertiesNeedNormalization(frontmatter);
-          if (!dataChanged && !propertiesChanged) {
-            unchanged += 1;
-            continue;
-          }
+          let prepared;
+          let dataChanged = false;
           await this.app.fileManager.processFrontMatter(file, (target) => {
+            if (String(target["基金编号"] ?? "").trim() !== code) throw new Error("基金编号已变更，请重新刷新");
+            if (String(target["净值日期"] || "") > histories.get(code).at(-1).date
+              || String(target["持仓校准日期"] || "") > histories.get(code).at(-1).date) {
+              throw new Error("返回净值早于笔记现有净值或持仓校准日期，本次未更新");
+            }
+            prepared = this.prepareFund(target, histories.get(code));
+            const changes = this.buildChanges(target, prepared);
+            dataChanged = this.hasChanges(target, changes);
             for (const [key, value] of Object.entries(changes)) target[key] = value;
             normalizeFundProperties(target);
           });
+          if (prepared.positionWarning) warnings.push(file.basename + "：" + prepared.positionWarning);
+          if (prepared.planWarning) warnings.push(file.basename + "：" + prepared.planWarning);
           if (dataChanged) {
             updated += 1;
             if (prepared.executions.length) dcaItems.push(`${file.basename}：补算 ${prepared.executions.length} 期定投`);
@@ -1849,6 +1808,7 @@ class HoldingCalibrationModal extends Modal {
       shares: String(fm["持仓份额"] ?? ""),
       holdingAmount: String(fm["持有金额"] ?? ""),
       holdingProfit: String(fm["持有收益"] ?? ""),
+      throughDate: String(fm["净值日期"] || ""),
     };
   }
 
@@ -1868,6 +1828,12 @@ class HoldingCalibrationModal extends Modal {
     addNumber("持仓份额", "shares", "支付宝当前份额");
     addNumber("持有金额", "holdingAmount", "支付宝当前金额");
     addNumber("持有收益", "holdingProfit", "亏损请输入负数", true);
+    new Setting(contentEl).setName("持仓截止净值日期")
+      .setDesc("持仓已包含截至该净值日的所有定投，之后的期数继续自动补算。请按持仓实际日期填写。")
+      .addText((text) => {
+        text.inputEl.type = "date";
+        text.setValue(this.form.throughDate).onChange((value) => { this.form.throughDate = value; });
+      });
     new Setting(contentEl).addButton((button) => button.setCta().setButtonText("保存校准").onClick(() => this.save()));
   }
 
@@ -1881,6 +1847,7 @@ class HoldingCalibrationModal extends Modal {
     this.saving = true;
     try {
       await this.app.fileManager.processFrontMatter(this.file, (fm) => {
+        calibrateDca(fm, this.form.throughDate);
         fm["持仓份额"] = position.shares;
         fm["持仓成本价"] = position.costPrice;
         fm["持仓总成本"] = position.totalCost;
@@ -1923,7 +1890,7 @@ class AddFundModal extends Modal {
       weekday: 1,
       monthday: 1,
       feeRate: 0,
-      startDate: new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }),
+      startDate: dcaNextDate(dcaToday()),
     };
   }
 
@@ -1975,6 +1942,7 @@ class AddFundModal extends Modal {
       if (dcaContainer) dcaContainer.style.display = this.form.dcaEnabled ? "" : "none";
     };
     new Setting(contentEl).setName("是否定投")
+      .setDesc("录入份额作为当前持仓；开启后从次日开始自动定投。")
       .addToggle((toggle) => toggle.setValue(this.form.dcaEnabled)
         .onChange((value) => { this.form.dcaEnabled = value; syncDcaVisibility(); }));
 
@@ -2040,8 +2008,7 @@ class AddFundModal extends Modal {
     const validDca = !this.form.dcaEnabled || (
       positiveNumber(this.form.amount)
       && Number(this.form.feeRate) >= 0 && Number(this.form.feeRate) <= 10
-      && (this.form.frequency === "daily" || (this.form.frequency === "weekly" && schedule >= 1 && schedule <= 5)
-        || (this.form.frequency === "monthly" && schedule >= 1 && schedule <= 28))
+      && validDcaSchedule(this.form.frequency, schedule)
     );
     const valid = /^\d{6}$/.test(this.form.code)
       && Boolean(positionFromSnapshot(this.form.shares, this.form.holdingAmount, this.form.holdingProfit))
@@ -2504,6 +2471,7 @@ class DcaSettingsModal extends Modal {
     contentEl.createEl("h2", { text: `${this.file.basename} · 定投设置` });
 
     new Setting(contentEl).setName("启用定投推算")
+      .setDesc("修改、暂停或恢复从保存次日生效；此前期数按原计划自动补算。")
       .addToggle((toggle) => toggle.setValue(this.form.enabled).onChange((value) => { this.form.enabled = value; }));
     new Setting(contentEl).setName("每期金额").addText((text) => {
       text.inputEl.type = "number";
@@ -2543,7 +2511,7 @@ class DcaSettingsModal extends Modal {
   async save() {
     if (this.saving) return;
     const schedule = this.form.frequency === "weekly" ? this.form.weekday : this.form.frequency === "monthly" ? this.form.monthday : 0;
-    const startDate = effectiveDcaStartDate(this.initiallyEnabled, this.form.enabled, this.form.startDate, this.form.today);
+    const startDate = effectiveDcaStartDate(this.initiallyEnabled, this.form.enabled, this.form.startDate, dcaToday());
     const valid = validDcaSettings(
       this.form.enabled,
       this.form.amount,
@@ -2559,14 +2527,15 @@ class DcaSettingsModal extends Modal {
     this.saving = true;
     try {
       await this.app.fileManager.processFrontMatter(this.file, (fm) => {
-        fm["定投启用"] = this.form.enabled;
+        const next = { "定投启用": this.form.enabled };
         if (this.form.enabled) {
-          fm["定投金额"] = round(this.form.amount, 2);
-          fm["定投频率"] = FREQUENCIES[this.form.frequency];
-          fm["定投日期"] = this.form.frequency === "weekly" ? WEEKDAYS[schedule] : this.form.frequency === "monthly" ? schedule : "每个交易日";
-          fm["手续费率"] = round(this.form.feeRate, 4);
-          fm["定投开始日期"] = startDate;
+          next["定投金额"] = round(this.form.amount, 2);
+          next["定投频率"] = FREQUENCIES[this.form.frequency];
+          next["定投日期"] = this.form.frequency === "weekly" ? WEEKDAYS[schedule] : this.form.frequency === "monthly" ? schedule : "每个交易日";
+          next["手续费率"] = round(this.form.feeRate, 4);
+          next["定投开始日期"] = startDate;
         }
+        saveDcaPlanChange(fm, next);
         normalizeFundProperties(fm);
       });
       this.close();

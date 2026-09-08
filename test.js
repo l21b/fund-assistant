@@ -681,7 +681,7 @@ assert.deepEqual(
     { date: "2026-08-03", nav: 1, change: 0 },
     { date: "2026-08-24", nav: 2, change: 0 },
   ], { frequency: "weekly", schedule: 1, startDate: "2026-08-10", lastDate: "2026-08-03" }).map((p) => p.date),
-  ["2026-08-24"],
+  ["2026-08-24", "2026-08-24", "2026-08-24"],
 );
 
 const context = {};

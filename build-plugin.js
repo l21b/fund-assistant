@@ -7,6 +7,7 @@ const withoutExports = (source) => source.replace(/\nmodule\.exports\s*=\s*\{[\s
 
 const constants = withoutExports(read("constants.js"));
 const fundMath = withoutExports(read("fund-math.js"));
+const dca = withoutExports(read("dca.js"));
 const overview = withoutExports(read("overview.js"))
   .replace(/^const \{ FUND_GROUPS, groupColor \} = require\("\.\/constants"\);\r?\n/, "")
   .replace(/^const \{ dailyHoldingProfit, totalHoldingCost \} = require\("\.\/fund-math"\);\r?\n/, "");
@@ -35,6 +36,7 @@ const bundledQdii = [
 ].join("\n");
 
 let main = read("main.js")
+  .replace(/^const \{[^\n]+\} = require\("\.\/dca"\);\r?\n/m, "")
   .replace(/^const \{ FUND_GROUPS, groupColor \} = require\("\.\/constants"\);\r?\n/m, "")
   .replace(/^const \{ dailyHoldingProfit, totalHoldingCost \} = require\("\.\/fund-math"\);\r?\n/m, "")
   .replace(/^const \{ renderFundOverview \} = require\("\.\/overview"\);\r?\n/m, "")
@@ -43,7 +45,7 @@ let main = read("main.js")
 
 const marker = "const DEFAULT_SETTINGS =";
 if (!main.includes(marker)) throw new Error("无法定位 main.js 插入点");
-main = main.replace(marker, `${constants}\n\n${fundMath}\n\n${bundledOverview}\n\n${bundledGrid}\n\n${bundledQdii}\n\n${marker}`);
+main = main.replace(marker, `${constants}\n\n${fundMath}\n\n${dca}\n\n${bundledOverview}\n\n${bundledGrid}\n\n${bundledQdii}\n\n${marker}`);
 
 const outputDir = path.join(root, "build");
 fs.mkdirSync(outputDir, { recursive: true });
